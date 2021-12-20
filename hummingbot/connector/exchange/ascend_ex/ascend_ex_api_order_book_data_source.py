@@ -4,7 +4,6 @@ import logging
 import aiohttp
 import ujson
 import time
-import pandas as pd
 
 from collections import defaultdict
 from typing import Optional, List, Dict, Any, AsyncIterable
