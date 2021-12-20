@@ -1,6 +1,6 @@
 Hummingbot was built and open-sourced by CoinAlpha, Inc,  a startup based in Mountain View, California. CoinAlpha is backed by [Initialized Capital](https://initialized.com/), [Bain Capital Ventures](https://www.baincapitalventures.com/), [Defiance Capital](https://www.defiance.capital/), and other leading crypto and fintech investors.
 
-Below, we list some articles and blog posts about Hummingbot, CoinAlpha, and liquidity mining (decentralized market making).
+Below, we list some articles and blog posts about Hummingbot, CoinAlpha, and liquidity mining (decentralized market making)
 
 ## Hummingbot
 
