@@ -10,7 +10,7 @@ echo "ℹ️  Press [ENTER] for default values:"
 echo
 
 # Specify hummingbot version
-read -p "   Enter Hummingbot version you want to use [latest/development] (default = \"latest\") >>> " TAG
+read -p "   Enter Hummingbot version you want to use [latest/development/local] (default = \"latest\") >>> " TAG
 if [ "$TAG" == "" ]
 then
   TAG="latest"
