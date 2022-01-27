@@ -4,7 +4,6 @@ import path_util        # noqa: F401
 import asyncio
 import errno
 import socket
-import docker
 from multiprocessing import Process
 import aioprocessing
 
@@ -82,18 +81,15 @@ if __name__ == "__main__":
         # IPC pipe
         client, dock = aioprocessing.AioPipe()
         event = aioprocessing.AioEvent()
-        docker_client = None
 
         try:
-            docker_client = docker.APIClient(base_url='unix://var/run/docker.sock')
+            # fork app
+            p = Process(target=start_docker, args=(client, event))
+            p.start()
         except Exception:
             # close pipe
             client.close()
             dock.close()
-
-        # fork app
-        p = Process(target=start_docker, args=(client, event, docker_client))
-        p.start()
 
         chdir_to_data_directory()
         if login_prompt():
@@ -101,10 +97,6 @@ if __name__ == "__main__":
             ev_loop.run_until_complete(main(dock, event))
 
     finally:
-        # clear pipe
-        if docker_client:
-            dock.send(None)
-
         # stop ipc
         client.close()
         dock.close()
