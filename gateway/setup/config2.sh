@@ -7,6 +7,19 @@ echo "===============  GENERATE GATEWAY CONFIGURATION FILES ==============="
 echo
 echo
 
+prompt_running_option () {
+read -p "Are you running Gateway from source or Docker ([s]ource/[d]ocker)>>> " RUNNING_OPTION
+if [ -d "$RUNNING_OPTION" == "s" || "$RUNNING_OPTION" == "source" ]; then
+    RUNNING_OPTION = "SOURCE"
+    echo "Running Gateway from $RUNNING_OPTION."
+else 
+    RUNNING_OPTION = "DOCKER"
+    echo "Running Gateway from $RUNNING_OPTION."
+    prompt_running_option
+fi    
+}
+prompt_running_option
+
 prompt_cert_path () {
 read -p "Enter the directory path for you SSL certificates (example = \"/home/user/hummingbot/certs\")>>> " CERT_PATH
 if [ -d "$CERT_PATH" ]; then
