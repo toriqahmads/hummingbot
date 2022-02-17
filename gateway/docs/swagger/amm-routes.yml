@@ -36,3 +36,41 @@ paths:
         '200':
           schema:
             $ref: '#/definitions/PriceResponse'
+  
+  /amm/liquidity/add:
+    post:
+      summary: 'Add liquidity to a pool'
+      operationId: 'add'
+      consumes:
+        - 'application/json'
+      produces:
+        - 'application/json'
+      parameters:
+        - in: 'body'
+          name: 'body'
+          required: true
+          schema:
+            $ref: '#/definitions/AddLiquidityRequest'
+      responses:
+        '200':
+          schema:
+            $ref: '#/definitions/AddLiquidityResponse'
+
+  /amm/liquidity/add:
+    post:
+      summary: 'Remove liquidity from a pool'
+      operationId: 'remove'
+      consumes:
+        - 'application/json'
+      produces:
+        - 'application/json'
+      parameters:
+        - in: 'body'
+          name: 'body'
+          required: true
+          schema:
+            $ref: '#/definitions/RemoveLiquidityRequest'
+      responses:
+        '200':
+          schema:
+            $ref: '#/definitions/RemoveLiquidityResponse'

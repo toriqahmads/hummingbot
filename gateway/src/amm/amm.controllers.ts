@@ -1,6 +1,8 @@
 import {
+  AddLiquidityRequest,
   PriceRequest,
   PriceResponse,
+  RemoveLiquidityRequest,
   TradeRequest,
   TradeResponse,
 } from './amm.requests';
@@ -17,6 +19,22 @@ export async function price(req: PriceRequest): Promise<PriceResponse> {
 }
 
 export async function trade(req: TradeRequest): Promise<TradeResponse> {
+  const chain = await getChain(req.chain, req.network);
+  const connector = await getConnector(req.chain, req.network, req.connector);
+  return uniswapTrade(chain, connector, req);
+}
+
+export async function addLiquidity(
+  req: AddLiquidityRequest
+): Promise<TradeResponse> {
+  const chain = await getChain(req.chain, req.network);
+  const connector = await getConnector(req.chain, req.network, req.connector);
+  return uniswapTrade(chain, connector, req);
+}
+
+export async function removeLiquidity(
+  req: RemoveLiquidityRequest
+): Promise<TradeResponse> {
   const chain = await getChain(req.chain, req.network);
   const connector = await getConnector(req.chain, req.network, req.connector);
   return uniswapTrade(chain, connector, req);

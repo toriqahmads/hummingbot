@@ -50,3 +50,47 @@ export interface TradeResponse {
   nonce: number;
   txHash: string | undefined;
 }
+
+export interface AddLiquidityRequest extends NetworkSelectionRequest {
+  address: string;
+  tokenA: string;
+  tokenB: string;
+  amountADesired: string;
+  amountBDesired: string;
+  amountAMin: string;
+  amountBMin: string;
+  deadline?: string;
+  nonce?: number;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+}
+
+export interface AddLiquidityResponse {
+  poolAddress: string;
+  amountA: string;
+  amountB: string;
+  liquidity: string;
+  nonce: number;
+  txHash: string;
+}
+
+export interface RemoveLiquidityRequest extends NetworkSelectionRequest {
+  address: string;
+  tokenA: string;
+  tokenB: string;
+  liquidity: string;
+  amountAMin: string;
+  amountBMin: string;
+  deadline?: string;
+  nonce?: number;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+}
+
+export interface RemoveLiquidityResponse {
+  poolAddress: string;
+  amountA: string;
+  amountB: string;
+  nonce: number;
+  txHash: string;
+}

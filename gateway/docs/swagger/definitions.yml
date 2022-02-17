@@ -773,3 +773,167 @@ definitions:
         example: 1
       txData:
         $ref: '#/definitions/SolanaTransaction'
+
+  AddLiquidityRequest:
+    type: 'object'
+    required:
+      - 'address'
+      - 'tokenA'
+      - 'tokenB'
+      - 'amountADesired'
+      - 'amountBDesired'
+      - 'amountAMin'
+      - 'amountBMin'
+      - 'chain'
+      - 'network'
+      - 'connector'
+    properties:
+      address:
+        type: 'string'
+        example: 'oaMWkrYr1g9JBcDUPRqz21cJBxowM4CEbDy2FsCgNK569CjZSr4wa51d4k9DpTRJU8GUHfp3e9YX2pGXaBS5Tta'
+      tokenA:
+        type: 'string'
+        example: 'MNGO'
+      tokenB:
+        type: 'string'
+        example: 'MNGO'
+      amountADesired:
+        type: 'string'
+        example: '100'
+      amountBDesired:
+        type: 'string'
+        example: '100'
+      amountAMin:
+        type: 'string'
+        example: '100'
+      amountBMin:
+        type: 'string'
+        example: '100'
+      deadline:
+        type: 'string'
+      nonce:
+        type: 'number'
+        example: 123
+      maxFeePerGas:
+        type: 'string'
+        example: '5000000000'
+      maxPriorityFeePerGas:
+        type: 'string'
+        example: '5000000000'
+      chain:
+        type: 'string'
+        example: 'ethereum'
+      network:
+        type: 'string'
+        example: 'kovan'
+      connector:
+        type: 'string'
+        example: 'uniswap'
+
+  AddLiquidityResponse:
+    type: 'object'
+    required:
+      - 'poolAddress'
+      - 'amountA'
+      - 'amountB'
+      - 'liquidity'
+      - 'nonce'
+      - 'txHash'
+    properties:
+      poolAddress:
+        type: 'string'
+        example: 'oaMWkrYr1g9JBcDUPRqz21cJBxowM4CEbDy2FsCgNK569CjZSr4wa51d4k9DpTRJU8GUHfp3e9YX2pGXaBS5Tta'
+      amountA:
+        type: 'string'
+        example: '100'
+      amountB:
+        type: 'string'
+        example: '100'
+      amountB:
+        type: 'liquidity'
+      nonce:
+        type: 'number'
+        example: 123
+      txHash:
+        type: 'string'
+        example: '0xa321bbe8888c3bc88ecb1ad4f03f22a71e6f5715dfcb19e0a2dca9036c981b6d'
+  
+
+  RemoveLiquidityRequest:
+    type: 'object'
+    required:
+      - 'address'
+      - 'tokenA'
+      - 'tokenB'
+      - 'liquidity'
+      - 'amountAMin'
+      - 'amountBMin'
+      - 'chain'
+      - 'network'
+      - 'connector'
+    properties:
+      address:
+        type: 'string'
+        example: 'oaMWkrYr1g9JBcDUPRqz21cJBxowM4CEbDy2FsCgNK569CjZSr4wa51d4k9DpTRJU8GUHfp3e9YX2pGXaBS5Tta'
+      tokenA:
+        type: 'string'
+        example: 'MNGO'
+      tokenB:
+        type: 'string'
+        example: 'MNGO'
+      liquidity:
+        type: 'string'
+      amountAMin:
+        type: 'string'
+        example: '100'
+      amountBMin:
+        type: 'string'
+        example: '100'
+      deadline:
+        type: 'string'
+      nonce:
+        type: 'number'
+        example: 123
+      maxFeePerGas:
+        type: 'string'
+        example: '5000000000'
+      maxPriorityFeePerGas:
+        type: 'string'
+        example: '5000000000'
+      chain:
+        type: 'string'
+        example: 'ethereum'
+      network:
+        type: 'string'
+        example: 'kovan'
+      connector:
+        type: 'string'
+        example: 'uniswap'
+
+  RemoveLiquidityResponse:
+    type: 'object'
+    required:
+      - 'poolAddress'
+      - 'amountA'
+      - 'amountB'
+      - 'nonce'
+      - 'txHash'
+    properties:
+      poolAddress:
+        type: 'string'
+        example: 'oaMWkrYr1g9JBcDUPRqz21cJBxowM4CEbDy2FsCgNK569CjZSr4wa51d4k9DpTRJU8GUHfp3e9YX2pGXaBS5Tta'
+      amountA:
+        type: 'string'
+        example: '100'
+      amountB:
+        type: 'string'
+        example: '100'
+      amountB:
+        type: 'liquidity'
+      nonce:
+        type: 'number'
+        example: 123
+      txHash:
+        type: 'string'
+        example: '0xa321bbe8888c3bc88ecb1ad4f03f22a71e6f5715dfcb19e0a2dca9036c981b6d'
+
