@@ -13,7 +13,12 @@ import {
   TradeRequest,
   TradeResponse,
 } from './amm.requests';
-import { validateAddLiquidityRequest, validatePriceRequest, validateRemoveLiquidityRequest, validateTradeRequest } from './amm.validators';
+import {
+  validateAddLiquidityRequest,
+  validatePriceRequest,
+  validateRemoveLiquidityRequest,
+  validateTradeRequest,
+} from './amm.validators';
 
 export namespace AmmRoutes {
   export const router = Router();
