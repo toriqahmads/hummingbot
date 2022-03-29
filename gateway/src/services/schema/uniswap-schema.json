@@ -25,11 +25,13 @@
           "type": "object",
           "properties": {
             "uniswapV2RouterAddress": { "type": "string" },
+            "uniswapV2FactoryAddress": { "type": "string" },
             "uniswapV3RouterAddress": { "type": "string" },
             "uniswapV3NftManagerAddress": { "type": "string" }
           },
           "required": [
             "uniswapV2RouterAddress",
+            "uniswapV2FactoryAddress",
             "uniswapV3RouterAddress",
             "uniswapV3NftManagerAddress"
           ],

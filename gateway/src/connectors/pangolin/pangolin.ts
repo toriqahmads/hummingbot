@@ -8,6 +8,7 @@ import {
   Wallet,
 } from 'ethers';
 import { PangolinConfig } from './pangolin.config';
+import factoryAbi from './IPangolinFactory.json';
 import routerAbi from './IPangolinRouter.json';
 import {
   Fetcher,
@@ -28,6 +29,7 @@ export class Pangolin implements Uniswapish {
   private _chain: string;
   private _router: string;
   private _routerAbi: ContractInterface;
+  private _factoryAbi: ContractInterface;
   private _gasLimit: number;
   private _ttl: number;
   private chainId;
@@ -42,6 +44,7 @@ export class Pangolin implements Uniswapish {
     this._router = config.routerAddress(network);
     this._ttl = config.ttl;
     this._routerAbi = routerAbi.abi;
+    this._factoryAbi = factoryAbi.abi;
     this._gasLimit = config.gasLimit;
   }
 
@@ -97,6 +100,13 @@ export class Pangolin implements Uniswapish {
    */
   public get routerAbi(): ContractInterface {
     return this._routerAbi;
+  }
+
+  /**
+   * Factory smart contract ABI.
+   */
+  public get factoryAbi(): ContractInterface {
+    return this._factoryAbi;
   }
 
   /**

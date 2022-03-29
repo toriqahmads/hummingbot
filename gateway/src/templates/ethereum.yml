@@ -1,3 +1,5 @@
+# data source for pools
+# https://v2.info.uniswap.org/home
 networks:
   mainnet:
     chainID: 1
@@ -7,6 +9,8 @@ networks:
     tokenListSource: >-
       https://wispy-bird-88a7.uniswap.workers.dev/?url=http://tokens.1inch.eth.link
     gasPriceRefreshInterval: 60
+    maxHops: 3
+    pools: ['WISE-ETH', 'USDC-ETH', 'FEI-TRIBE', 'ETH-USDT', 'TOKE-ETH', 'FXS-FRAX', 'DAI-USDC', 'MC-ETH', 'USDC-USDT', 'UNI-ETH', 'WBTC-ETH', 'ELON-ETH', 'PAXG-ETH', 'FNK-USDT', 'ETH-FOX', 'DAI-ETH', 'SYN-FRAX', 'SHINJA-ETH', 'XXi-ETH', 'WAXE-ETH']
   kovan:
     chainID: 42
     nodeURL: https://kovan.infura.io/v3/
@@ -14,6 +18,8 @@ networks:
     tokenListSource: src/chains/ethereum/erc20_tokens_kovan.json
     nativeCurrencySymbol: ETH
     gasPriceRefreshInterval: 60
+    maxHops: 3
+    pools: ['WETH-DAI','WETH-BAT']    
   ropsten:
     chainID: 3
     nodeURL: https://ropsten.infura.io/v3/
@@ -21,5 +27,7 @@ networks:
     tokenListSource: src/chains/ethereum/erc20_tokens_ropsten.json  
     nativeCurrencySymbol: ETH
     gasPriceRefreshInterval: 60
+    maxHops: 3
+    pools: ['']
 nodeAPIKey: ''
 manualGasPrice: 110

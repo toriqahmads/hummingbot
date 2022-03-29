@@ -6,6 +6,7 @@ import {
 } from '../../services/error-handler';
 import { UniswapConfig } from './uniswap.config';
 import routerAbi from './uniswap_v2_router_abi.json';
+import factoryAbi from './uniswap_v2_factory_abi.json';
 import {
   Contract,
   ContractInterface,
@@ -33,6 +34,7 @@ export class Uniswap implements Uniswapish {
   private _chain: string;
   private _router: string;
   private _routerAbi: ContractInterface;
+  private _factoryAbi: ContractInterface;
   private _gasLimit: number;
   private _ttl: number;
   private chainId;
@@ -46,6 +48,7 @@ export class Uniswap implements Uniswapish {
     this.chainId = this.ethereum.chainId;
     this._ttl = UniswapConfig.config.ttl(2);
     this._routerAbi = routerAbi.abi;
+    this._factoryAbi = factoryAbi.abi;
     this._gasLimit = UniswapConfig.config.gasLimit(2);
     this._router = config.uniswapV2RouterAddress(network);
   }
@@ -105,6 +108,13 @@ export class Uniswap implements Uniswapish {
    */
   public get routerAbi(): ContractInterface {
     return this._routerAbi;
+  }
+
+  /**
+   * Factory smart contract ABI.
+   */
+  public get factoryAbi(): ContractInterface {
+    return this._factoryAbi;
   }
 
   /**
@@ -290,5 +300,27 @@ export class Uniswap implements Uniswapish {
     logger.info(tx);
     await this.ethereum.nonceManager.commitNonce(wallet.address, nonce);
     return tx;
+  }
+
+  async getPoolAddress(
+    tokenA: Token,
+    tokenB: Token,
+    uniswapFactory: string,
+    abi: ContractInterface
+  ): Promise<string> {
+    const contract: Contract = new Contract(
+      uniswapFactory,
+      abi,
+      this.ethereum.provider
+    );
+    const tokens = [tokenA, tokenB];
+    const [token0, token1] = tokens[0].sortsBefore(tokens[1])
+      ? tokens
+      : [tokens[1], tokens[0]];
+    const pairAddress: string = await contract['getPair'](
+      token0.address,
+      token1.address
+    );
+    return pairAddress;
   }
 }

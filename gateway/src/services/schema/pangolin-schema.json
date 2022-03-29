@@ -11,9 +11,10 @@
         "^\\w+$": {
           "type": "object",
           "properties": {
-            "routerAddress": { "type": "string" }
+            "routerAddress": { "type": "string" },
+            "factoryAddress": { "type": "string" }
           },
-          "required": ["routerAddress"],
+          "required": ["routerAddress", "factoryAddress"],
           "additionalProperties": false
         }
       },
