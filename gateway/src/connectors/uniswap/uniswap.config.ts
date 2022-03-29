@@ -6,6 +6,7 @@ export namespace UniswapConfig {
     gasLimit: (version: number) => number;
     ttl: (version: number) => number;
     uniswapV2RouterAddress: (network: string) => string;
+    uniswapV2FactoryAddress: (network: string) => string;
     uniswapV3RouterAddress: (network: string) => string;
     uniswapV3NftManagerAddress: (network: string) => string;
     tradingTypes: (network: string) => Array<string>;
@@ -26,6 +27,10 @@ export namespace UniswapConfig {
     uniswapV2RouterAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
         `uniswap.contractAddresses.${network}.uniswapV2RouterAddress`
+      ),
+    uniswapV2FactoryAddress: (network: string) =>
+      ConfigManagerV2.getInstance().get(
+        `uniswap.contractAddresses.${network}.uniswapV2FactoryAddress`
       ),
     uniswapV3RouterAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(

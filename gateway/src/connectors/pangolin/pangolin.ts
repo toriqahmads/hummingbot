@@ -28,6 +28,7 @@ export class Pangolin implements Uniswapish {
   private avalanche: Avalanche;
   private _chain: string;
   private _router: string;
+  private _factoryAddress: string;
   private _routerAbi: ContractInterface;
   private _factoryAbi: ContractInterface;
   private _gasLimit: number;
@@ -42,6 +43,7 @@ export class Pangolin implements Uniswapish {
     this.avalanche = Avalanche.getInstance(network);
     this.chainId = this.avalanche.chainId;
     this._router = config.routerAddress(network);
+    this._factoryAddress = config.factoryAddress(network);
     this._ttl = config.ttl;
     this._routerAbi = routerAbi.abi;
     this._factoryAbi = factoryAbi.abi;
@@ -100,6 +102,13 @@ export class Pangolin implements Uniswapish {
    */
   public get routerAbi(): ContractInterface {
     return this._routerAbi;
+  }
+
+  /**
+   * Factory address.
+   */
+  public get factoryAddress(): string {
+    return this._factoryAddress;
   }
 
   /**

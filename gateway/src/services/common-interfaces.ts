@@ -52,6 +52,16 @@ export interface Uniswapish {
   routerAbi: ContractInterface;
 
   /**
+   * Factory address.
+   */
+  factoryAddress: string;
+
+  /**
+   * Factory smart contract ABI.
+   */
+  factoryAbi: ContractInterface;
+
+  /**
    * Default gas limit for swap transactions.
    */
   gasLimit: number;

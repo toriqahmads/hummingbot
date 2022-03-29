@@ -1,13 +1,9 @@
 import { NetworkSelectionRequest } from '../services/common-interfaces';
 export type Side = 'BUY' | 'SELL';
 
-export interface PoolAddressRequest extends NetworkSelectionRequest {
-  base: string;
+export interface PoolRequest extends NetworkSelectionRequest {
   quote: string;
-}
-
-export interface PollAddressResponse {
-  poolAddress: string;
+  base: string;
 }
 
 export interface PriceRequest extends NetworkSelectionRequest {

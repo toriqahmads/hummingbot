@@ -18,19 +18,23 @@ import * as math from 'mathjs';
 export class UniswapV3Helper {
   protected ethereum: Ethereum;
   private _router: string;
+  private _factoryAddress: string; // dummy value
   private _nftManager: string;
   private _ttl: number;
   private _routerAbi: ContractInterface;
   private _nftAbi: ContractInterface;
   private _poolAbi: ContractInterface;
+  private _factoryAbi: ContractInterface; // dummy value
 
   constructor(network: string) {
     this.ethereum = Ethereum.getInstance(network);
     this._router = UniswapConfig.config.uniswapV3RouterAddress(network);
+    this._factoryAddress = '';
     this._nftManager = UniswapConfig.config.uniswapV3NftManagerAddress(network);
     this._ttl = UniswapConfig.config.ttl(3);
     this._routerAbi =
       require('@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json').abi;
+    this._factoryAbi = [];
     this._nftAbi =
       require('@uniswap/v3-periphery/artifacts/contracts/NonfungiblePositionManager.sol/NonfungiblePositionManager.json').abi;
     this._poolAbi =
@@ -39,6 +43,10 @@ export class UniswapV3Helper {
 
   public get router(): string {
     return this._router;
+  }
+
+  public get factoryAddress(): string {
+    return this._factoryAddress;
   }
 
   public get nftManager(): string {
@@ -51,6 +59,10 @@ export class UniswapV3Helper {
 
   public get routerAbi(): ContractInterface {
     return this._routerAbi;
+  }
+
+  public get factoryAbi(): ContractInterface {
+    return this._factoryAbi;
   }
 
   public get nftAbi(): ContractInterface {

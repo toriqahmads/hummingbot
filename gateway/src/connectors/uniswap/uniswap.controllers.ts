@@ -27,6 +27,7 @@ import {
 import { logger } from '../../services/logger';
 import {
   EstimateGasResponse,
+  PoolRequest,
   PriceRequest,
   PriceResponse,
   TradeRequest,
@@ -357,4 +358,27 @@ export async function estimateGas(
     gasLimit,
     gasCost: gasCostInEthString(gasPrice, gasLimit),
   };
+}
+
+export async function pool(
+  ethereumish: Ethereumish,
+  uniswapish: Uniswapish,
+  req: PoolRequest
+): Promise<string> {
+  const baseToken: Tokenish = getFullTokenFromSymbol(
+    ethereumish,
+    uniswapish,
+    req.base
+  );
+  const quoteToken: Tokenish = getFullTokenFromSymbol(
+    ethereumish,
+    uniswapish,
+    req.quote
+  );
+  return uniswapish.getPool(
+    quoteToken,
+    baseToken,
+    uniswapish.factoryAddress,
+    uniswapish.factoryAbi
+  );
 }

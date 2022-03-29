@@ -33,6 +33,7 @@ export class Uniswap implements Uniswapish {
   private ethereum: Ethereum;
   private _chain: string;
   private _router: string;
+  private _factoryAddress: string;
   private _routerAbi: ContractInterface;
   private _factoryAbi: ContractInterface;
   private _gasLimit: number;
@@ -51,6 +52,7 @@ export class Uniswap implements Uniswapish {
     this._factoryAbi = factoryAbi.abi;
     this._gasLimit = UniswapConfig.config.gasLimit(2);
     this._router = config.uniswapV2RouterAddress(network);
+    this._factoryAddress = config.uniswapV2FactoryAddress(network);
   }
 
   public static getInstance(chain: string, network: string): Uniswap {
@@ -108,6 +110,13 @@ export class Uniswap implements Uniswapish {
    */
   public get routerAbi(): ContractInterface {
     return this._routerAbi;
+  }
+
+  /**
+   * Factory address.
+   */
+  public get factoryAddress(): string {
+    return this._factoryAddress;
   }
 
   /**

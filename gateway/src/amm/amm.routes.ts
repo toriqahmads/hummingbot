@@ -2,9 +2,10 @@
 /* eslint-disable @typescript-eslint/ban-types */
 import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../services/error-handler';
-import { price, trade, estimateGas } from './amm.controllers';
+import { price, trade, estimateGas, pool } from './amm.controllers';
 import {
   EstimateGasResponse,
+  PoolRequest,
   PriceRequest,
   PriceResponse,
   TradeRequest,
@@ -55,6 +56,15 @@ export namespace AmmRoutes {
       ) => {
         validateEstimateGasRequest(req.body);
         res.status(200).json(await estimateGas(req.body));
+      }
+    )
+  );
+
+  router.post(
+    '/pool',
+    asyncHandler(
+      async (req: Request<{}, {}, PoolRequest>, res: Response<string, {}>) => {
+        res.status(200).json(await pool(req.body));
       }
     )
   );

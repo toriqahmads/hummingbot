@@ -7,6 +7,7 @@ export namespace PangolinConfig {
     gasLimit: number;
     ttl: number;
     routerAddress: (network: string) => string;
+    factoryAddress: (network: string) => string;
     tradingTypes: Array<string>;
     availableNetworks: Array<AvailableNetworks>;
   }
@@ -20,6 +21,10 @@ export namespace PangolinConfig {
     routerAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
         'pangolin.contractAddresses.' + network + '.routerAddress'
+      ),
+    factoryAddress: (network: string) =>
+      ConfigManagerV2.getInstance().get(
+        'pangolin.contractAddresses.' + network + '.factoryAddress'
       ),
     tradingTypes: ['EVM_AMM'],
     availableNetworks: [
