@@ -285,4 +285,27 @@ export class Pangolin implements Uniswapish {
     await this.avalanche.nonceManager.commitNonce(wallet.address, nonce);
     return tx;
   }
+
+  async getPool(
+    quoteToken: Token,
+    baseToken: Token,
+    factory: string, // 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+    abi: ContractInterface
+    // fee?: number
+  ): Promise<string> {
+    const contract: Contract = new Contract(
+      factory,
+      abi,
+      this.avalanche.provider
+    );
+    const tokens = [quoteToken, baseToken];
+    const [token0, token1] = tokens[0].sortsBefore(tokens[1])
+      ? tokens
+      : [tokens[1], tokens[0]];
+    const pairAddress: string = await contract['getPair'](
+      token0.address,
+      token1.address
+    );
+    return pairAddress;
+  }
 }

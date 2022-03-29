@@ -302,18 +302,19 @@ export class Uniswap implements Uniswapish {
     return tx;
   }
 
-  async getPoolAddress(
-    tokenA: Token,
-    tokenB: Token,
-    uniswapFactory: string,
+  async getPool(
+    quoteToken: Token,
+    baseToken: Token,
+    factory: string, // 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
     abi: ContractInterface
+    // fee?: number
   ): Promise<string> {
     const contract: Contract = new Contract(
-      uniswapFactory,
+      factory,
       abi,
       this.ethereum.provider
     );
-    const tokens = [tokenA, tokenB];
+    const tokens = [quoteToken, baseToken];
     const [token0, token1] = tokens[0].sortsBefore(tokens[1])
       ? tokens
       : [tokens[1], tokens[0]];

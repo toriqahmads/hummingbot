@@ -114,3 +114,15 @@ describe('verify Uniswap estimateBuyTrade', () => {
     }).rejects.toThrow(UniswapishPriceError);
   });
 });
+
+describe('verify Uniswap getPoolAddress', () => {
+  it('Should return an address for an existing pool', async () => {
+    const expectedPoolAddress = await uniswap.getPool(
+      WETH,
+      DAI,
+      '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
+      uniswap.factoryAbi
+    );
+    expect(expectedPoolAddress).toHaveProperty('0x');
+  });
+});

@@ -127,6 +127,27 @@ export interface Uniswapish {
     maxFeePerGas?: BigNumber,
     maxPriorityFeePerGas?: BigNumber
   ): Promise<Transaction>;
+
+  /**
+   * Get the pool for a trading pair.
+   * calculate the amount of `quoteToken` needed for the transaction.
+   *
+   * This is typically used for calculating token buy prices.
+   *
+   * @param quoteToken Token input for the transaction
+   * @param baseToken Token output from the transaction
+   * @param amount Amount of `baseToken` desired from the transaction
+   * @param factory
+   * @param abi
+   * @param fee
+   */
+  getPool(
+    quoteToken: Tokenish,
+    baseToken: Tokenish,
+    factory: string,
+    abi: ContractInterface,
+    fee?: number
+  ): Promise<string>;
 }
 
 export interface Ethereumish extends EthereumBase {
