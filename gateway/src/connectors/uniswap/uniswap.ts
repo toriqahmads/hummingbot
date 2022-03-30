@@ -314,9 +314,8 @@ export class Uniswap implements Uniswapish {
   async getPool(
     quoteToken: Token,
     baseToken: Token,
-    factory: string, // 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+    factory: string,
     abi: ContractInterface
-    // fee?: number
   ): Promise<string> {
     const contract: Contract = new Contract(
       factory,

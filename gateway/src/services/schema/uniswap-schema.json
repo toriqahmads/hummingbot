@@ -39,6 +39,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "pools": {
+      "type": "object",
+      "patternProperties": {
+        "^\\w+$": {
+          "type": "object",
+          "properties": {
+            "maxHops": { "type": "integer" },
+            "pools": { "type": "array" }
+          },
+          "required": ["maxHops", "pools"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

@@ -10,6 +10,8 @@ export namespace PangolinConfig {
     factoryAddress: (network: string) => string;
     tradingTypes: Array<string>;
     availableNetworks: Array<AvailableNetworks>;
+    maxHops: (network: string) => number;
+    pools: (network: string) => Array<string>;
   }
 
   export const config: NetworkConfig = {
@@ -30,5 +32,9 @@ export namespace PangolinConfig {
     availableNetworks: [
       { chain: 'avalanche', networks: ['avalanche', 'fuji'] },
     ],
+    maxHops: (network: string) =>
+      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.maxHops`),
+    pools: (network: string) =>
+      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.pools`),
   };
 }

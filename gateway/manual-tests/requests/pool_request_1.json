@@ -1,0 +1,7 @@
+{
+  "connector": "uniswap",
+  "chain": "ethereum",
+  "network": "kovan",
+  "quote": "BAT",
+  "base": "WETH"
+}

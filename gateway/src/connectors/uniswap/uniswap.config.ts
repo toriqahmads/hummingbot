@@ -11,6 +11,8 @@ export namespace UniswapConfig {
     uniswapV3NftManagerAddress: (network: string) => string;
     tradingTypes: (network: string) => Array<string>;
     availableNetworks: Array<AvailableNetworks>;
+    maxHops: (network: string) => number;
+    pools: (network: string) => Array<string>;
   }
 
   export const config: NetworkConfig = {
@@ -50,5 +52,9 @@ export namespace UniswapConfig {
         ),
       },
     ],
+    maxHops: (network: string) =>
+      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.maxHops`),
+    pools: (network: string) =>
+      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.pools`),
   };
 }
