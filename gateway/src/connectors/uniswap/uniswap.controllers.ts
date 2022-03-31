@@ -364,7 +364,7 @@ export async function pool(
   ethereumish: Ethereumish,
   uniswapish: Uniswapish,
   req: PoolRequest
-): Promise<string> {
+): Promise<string | null> {
   const baseToken: Tokenish = getFullTokenFromSymbol(
     ethereumish,
     uniswapish,

@@ -35,7 +35,7 @@ export async function estimateGas(
   return uniswapEstimateGas(chain, connector);
 }
 
-export async function pool(req: PoolRequest): Promise<string> {
+export async function pool(req: PoolRequest): Promise<string | null> {
   const chain = await getChain(req.chain, req.network);
   const connector = await getConnector(req.chain, req.network, req.connector);
   return uniswapPool(chain, connector, req);

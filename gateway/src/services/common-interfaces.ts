@@ -157,7 +157,7 @@ export interface Uniswapish {
     factory: string,
     abi: ContractInterface,
     fee?: number
-  ): Promise<string>;
+  ): Promise<string | null>;
 }
 
 export interface Ethereumish extends EthereumBase {

@@ -17,6 +17,8 @@ import fse from 'fs-extra';
 import { ConfigManagerCertPassphrase } from './config-manager-cert-passphrase';
 import { logger } from './logger';
 
+export const zeroAddress: string = '0x0000000000000000000000000000000000000000';
+
 // information about an Ethereum token
 export interface TokenInfo {
   chainId: number;

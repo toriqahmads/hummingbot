@@ -26,6 +26,7 @@ import { BigNumber, Transaction, Wallet } from 'ethers';
 import { logger } from '../../services/logger';
 import { percentRegexp } from '../../services/config-manager-v2';
 import { Ethereum } from '../../chains/ethereum/ethereum';
+import { zeroAddress } from '../../services/ethereum-base';
 import { ExpectedTrade, Uniswapish } from '../../services/common-interfaces';
 
 export class Uniswap implements Uniswapish {
@@ -41,6 +42,8 @@ export class Uniswap implements Uniswapish {
   private chainId;
   private tokenList: Record<string, Token> = {};
   private _ready: boolean = false;
+  private _poolStrings: Array<string> = [];
+  private _pools: Array<Pair> = [];
 
   private constructor(chain: string, network: string) {
     this._chain = chain;
@@ -53,6 +56,7 @@ export class Uniswap implements Uniswapish {
     this._gasLimit = UniswapConfig.config.gasLimit(2);
     this._router = config.uniswapV2RouterAddress(network);
     this._factoryAddress = config.uniswapV2FactoryAddress(network);
+    this._poolStrings = config.pools(network);
   }
 
   public static getInstance(chain: string, network: string): Uniswap {
@@ -76,6 +80,58 @@ export class Uniswap implements Uniswapish {
     return this.tokenList[address];
   }
 
+  /**
+   * The user sets an array of direct pools in their config to be used to find
+   * the least expensive route for a trade. This creates the pairs to be used
+   * in the route calculation. We do this on initiation because it requires
+   * asynchronous network calls
+   *
+   */
+  public async updatePools() {
+    for (const pair of this._poolStrings) {
+      const splitPair = pair.split('-');
+      if (splitPair.length === 2) {
+        const base = splitPair[0];
+        const quote = splitPair[1];
+        const baseTokenInfo = this.ethereum.getTokenForSymbol(base);
+        const quoteTokenInfo = this.ethereum.getTokenForSymbol(quote);
+
+        if (baseTokenInfo !== null && quoteTokenInfo !== null) {
+          const baseToken = new Token(
+            this.chainId,
+            baseTokenInfo.address,
+            baseTokenInfo.decimals,
+            baseTokenInfo.symbol,
+            baseTokenInfo.name
+          );
+
+          const quoteToken = new Token(
+            this.chainId,
+            quoteTokenInfo.address,
+            quoteTokenInfo.decimals,
+            quoteTokenInfo.symbol,
+            quoteTokenInfo.name
+          );
+
+          const pool = await this.getPool(
+            quoteToken,
+            baseToken,
+            this._factoryAddress,
+            this._factoryAbi
+          );
+          if (pool) {
+            const pair: Pair = await Fetcher.fetchPairData(
+              baseToken,
+              quoteToken,
+              this.ethereum.provider
+            );
+            this._pools.push(pair);
+          }
+        }
+      }
+    }
+  }
+
   public async init() {
     if (this._chain == 'ethereum' && !this.ethereum.ready())
       throw new InitializationError(
@@ -91,6 +147,9 @@ export class Uniswap implements Uniswapish {
         token.name
       );
     }
+
+    await this.updatePools();
+
     this._ready = true;
   }
 
@@ -181,7 +240,7 @@ export class Uniswap implements Uniswapish {
       this.ethereum.provider
     );
     const trades: Trade[] = Trade.bestTradeExactIn(
-      [pair],
+      this._pools.concat([pair]),
       nativeTokenAmount,
       quoteToken,
       { maxHops: 1 }
@@ -230,7 +289,7 @@ export class Uniswap implements Uniswapish {
       this.ethereum.provider
     );
     const trades: Trade[] = Trade.bestTradeExactOut(
-      [pair],
+      this._pools.concat([pair]),
       quoteToken,
       nativeTokenAmount,
       { maxHops: 1 }
@@ -311,12 +370,20 @@ export class Uniswap implements Uniswapish {
     return tx;
   }
 
+  /**
+   * Check if a pool exists for a pair of ERC20 tokens.
+   *
+   * @param quoteToken Quote Token
+   * @param baseToken Base Token
+   * @param factory Factory smart contract adress
+   * @param abi Factory contract interface
+   */
   async getPool(
     quoteToken: Token,
     baseToken: Token,
     factory: string,
     abi: ContractInterface
-  ): Promise<string> {
+  ): Promise<string | null> {
     const contract: Contract = new Contract(
       factory,
       abi,
@@ -330,6 +397,7 @@ export class Uniswap implements Uniswapish {
       token0.address,
       token1.address
     );
-    return pairAddress;
+
+    return pairAddress !== zeroAddress ? pairAddress : null;
   }
 }
