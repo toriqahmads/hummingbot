@@ -128,8 +128,26 @@ export class Uniswap implements Uniswapish {
               this.ethereum.provider
             );
             this._pools.push(pair);
+          } else {
+            logger.warning(
+              `There is not a direct pool pair for ${splitPair} on ${this._chain} for Uniswap V2.`
+            );
+          }
+        } else {
+          if (baseTokenInfo === null) {
+            logger.warning(
+              `There is an unrecognized base token in your Uniswap V2 config for ${this._chain}: ${base}.`
+            );
+          } else if (quoteTokenInfo === null) {
+            logger.warning(
+              `There is an unrecognized quote token in your Uniswap V2 config for ${this._chain}: ${quote}.`
+            );
           }
         }
+      } else {
+        logger.warning(
+          `The pool pair ${pair} in your Uniswap V2 config for ${this._chain} is malformed. It should be a string in the format 'QUOTE-BASE'.`
+        );
       }
     }
   }
