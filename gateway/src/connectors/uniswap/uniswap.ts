@@ -44,6 +44,7 @@ export class Uniswap implements Uniswapish {
   private _ready: boolean = false;
   private _poolStrings: Array<string> = [];
   private _pools: Array<Pair> = [];
+  private _maxHops: number;
 
   private constructor(chain: string, network: string) {
     this._chain = chain;
@@ -57,6 +58,7 @@ export class Uniswap implements Uniswapish {
     this._router = config.uniswapV2RouterAddress(network);
     this._factoryAddress = config.uniswapV2FactoryAddress(network);
     this._poolStrings = config.pools(network);
+    this._maxHops = config.maxHops(network);
   }
 
   public static getInstance(chain: string, network: string): Uniswap {
@@ -243,7 +245,7 @@ export class Uniswap implements Uniswapish {
       this._pools.concat([pair]),
       nativeTokenAmount,
       quoteToken,
-      { maxHops: 1 }
+      { maxHops: this._maxHops }
     );
     if (!trades || trades.length === 0) {
       throw new UniswapishPriceError(
@@ -292,7 +294,7 @@ export class Uniswap implements Uniswapish {
       this._pools.concat([pair]),
       quoteToken,
       nativeTokenAmount,
-      { maxHops: 1 }
+      { maxHops: this._maxHops }
     );
     if (!trades || trades.length === 0) {
       throw new UniswapishPriceError(
