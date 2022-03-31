@@ -40,3 +40,13 @@ contractAddresses:
     uniswapV3RouterAddress: '0xE592427A0AEce92De3Edee1F18E0157C05861564'
     uniswapV3NftManagerAddress: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88'
 
+pools:
+  mainnet:
+    maxHops: 3
+    pools: ['WISE-ETH', 'USDC-ETH', 'FEI-TRIBE', 'ETH-USDT', 'TOKE-ETH', 'FXS-FRAX', 'DAI-USDC', 'MC-ETH', 'USDC-USDT', 'UNI-ETH', 'WBTC-ETH', 'ELON-ETH', 'PAXG-ETH', 'FNK-USDT', 'ETH-FOX', 'DAI-ETH', 'SYN-FRAX', 'SHINJA-ETH', 'XXi-ETH', 'WAXE-ETH']
+  kovan:
+    maxHops: 3
+    pools: ['WETH-DAI','WETH-BAT']
+  ropsten:
+    maxHops: 3
+    pools: []
