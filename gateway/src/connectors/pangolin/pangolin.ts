@@ -21,6 +21,7 @@ import {
 } from '@pangolindex/sdk';
 import { logger } from '../../services/logger';
 import { Avalanche } from '../../chains/avalanche/avalanche';
+import { zeroAddress } from '../../services/ethereum-base';
 import { ExpectedTrade, Uniswapish } from '../../services/common-interfaces';
 
 export class Pangolin implements Uniswapish {
@@ -36,6 +37,9 @@ export class Pangolin implements Uniswapish {
   private chainId;
   private tokenList: Record<string, Token> = {};
   private _ready: boolean = false;
+  private _poolStrings: Array<string> = [];
+  private _pools: Array<Pair> = [];
+  private _maxHops: number;
 
   private constructor(chain: string, network: string) {
     this._chain = chain;
@@ -48,6 +52,8 @@ export class Pangolin implements Uniswapish {
     this._routerAbi = routerAbi.abi;
     this._factoryAbi = factoryAbi.abi;
     this._gasLimit = config.gasLimit;
+    this._poolStrings = config.pools(network);
+    this._maxHops = config.maxHops(network);
   }
 
   public static getInstance(chain: string, network: string): Pangolin {
@@ -71,6 +77,75 @@ export class Pangolin implements Uniswapish {
     return this.tokenList[address];
   }
 
+  /**
+   * The user sets an array of direct pools in their config to be used to find
+   * the least expensive route for a trade. This creates the pairs to be used
+   * in the route calculation. We do this on initiation because it requires
+   * asynchronous network calls
+   */
+  public async updatePools() {
+    for (const pair of this._poolStrings) {
+      const splitPair = pair.split('-');
+      if (splitPair.length === 2) {
+        const base = splitPair[0];
+        const quote = splitPair[1];
+        const baseTokenInfo = this.avalanche.getTokenForSymbol(base);
+        const quoteTokenInfo = this.avalanche.getTokenForSymbol(quote);
+
+        if (baseTokenInfo !== null && quoteTokenInfo !== null) {
+          const baseToken = new Token(
+            this.chainId,
+            baseTokenInfo.address,
+            baseTokenInfo.decimals,
+            baseTokenInfo.symbol,
+            baseTokenInfo.name
+          );
+
+          const quoteToken = new Token(
+            this.chainId,
+            quoteTokenInfo.address,
+            quoteTokenInfo.decimals,
+            quoteTokenInfo.symbol,
+            quoteTokenInfo.name
+          );
+
+          const pool = await this.getPool(
+            quoteToken,
+            baseToken,
+            this._factoryAddress,
+            this._factoryAbi
+          );
+          if (pool) {
+            const pair: Pair = await Fetcher.fetchPairData(
+              baseToken,
+              quoteToken,
+              this.avalanche.provider
+            );
+            this._pools.push(pair);
+          } else {
+            logger.warning(
+              `There is not a direct pool pair for ${splitPair} on ${this._chain} for Pangolin.`
+            );
+          }
+        } else {
+          if (baseTokenInfo === null) {
+            logger.warning(
+              `There is an unrecognized base token in your Pangolin config for ${this._chain}: ${base}.`
+            );
+          } else if (quoteTokenInfo === null) {
+            logger.warning(
+              `There is an unrecognized quote token in your Pangolin config for ${this._chain}: ${quote}.`
+            );
+          }
+        }
+      } else {
+        logger.warning(
+          `The pool pair ${pair} in your Pangolin config for ${this._chain} is malformed. It should be a string in the format 'BASE-QUOTE'.`
+        );
+      }
+    }
+  }
+
   public async init() {
     if (this._chain == 'avalanche' && !this.avalanche.ready())
       throw new Error('Avalanche is not available');
@@ -83,6 +158,7 @@ export class Pangolin implements Uniswapish {
         token.name
       );
     }
+    await this.updatePools();
     this._ready = true;
   }
 
@@ -169,10 +245,10 @@ export class Pangolin implements Uniswapish {
       this.avalanche.provider
     );
     const trades: Trade[] = Trade.bestTradeExactIn(
-      [pair],
+      this._pools.concat([pair]),
       nativeTokenAmount,
       quoteToken,
-      { maxHops: 1 }
+      { maxHops: this._maxHops }
     );
     if (!trades || trades.length === 0) {
       throw new UniswapishPriceError(
@@ -216,10 +292,10 @@ export class Pangolin implements Uniswapish {
       this.avalanche.provider
     );
     const trades: Trade[] = Trade.bestTradeExactOut(
-      [pair],
+      this._pools.concat([pair]),
       quoteToken,
       nativeTokenAmount,
-      { maxHops: 1 }
+      { maxHops: this._maxHops }
     );
     if (!trades || trades.length === 0) {
       throw new UniswapishPriceError(
@@ -295,13 +371,20 @@ export class Pangolin implements Uniswapish {
     return tx;
   }
 
+  /**
+   * Check if a pool exists for a pair of ERC20 tokens.
+   *
+   * @param quoteToken Quote Token
+   * @param baseToken Base Token
+   * @param factory Factory smart contract adress
+   * @param abi Factory contract interface
+   */
   async getPool(
     quoteToken: Token,
     baseToken: Token,
-    factory: string, // 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+    factory: string,
     abi: ContractInterface
-    // fee?: number
-  ): Promise<string> {
+  ): Promise<string | null> {
     const contract: Contract = new Contract(
       factory,
       abi,
@@ -315,6 +398,6 @@ export class Pangolin implements Uniswapish {
       token0.address,
       token1.address
     );
-    return pairAddress;
+    return pairAddress !== zeroAddress ? pairAddress : null;
   }
 }

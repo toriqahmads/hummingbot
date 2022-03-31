@@ -87,7 +87,6 @@ export class Uniswap implements Uniswapish {
    * the least expensive route for a trade. This creates the pairs to be used
    * in the route calculation. We do this on initiation because it requires
    * asynchronous network calls
-   *
    */
   public async updatePools() {
     for (const pair of this._poolStrings) {
@@ -146,7 +145,7 @@ export class Uniswap implements Uniswapish {
         }
       } else {
         logger.warning(
-          `The pool pair ${pair} in your Uniswap V2 config for ${this._chain} is malformed. It should be a string in the format 'QUOTE-BASE'.`
+          `The pool pair ${pair} in your Uniswap V2 config for ${this._chain} is malformed. It should be a string in the format 'BASE-QUOTE'.`
         );
       }
     }
