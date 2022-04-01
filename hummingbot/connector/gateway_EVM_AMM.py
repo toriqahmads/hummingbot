@@ -293,7 +293,6 @@ class GatewayEVMAMM(ConnectorBase):
             self.address,
             token_symbol,
             self.connector_name,
-            self._nonce,
             **request_args
         )
 
@@ -508,7 +507,6 @@ class GatewayEVMAMM(ConnectorBase):
                 trade_type,
                 amount,
                 price,
-                self._nonce,
                 **request_args
             )
             transaction_hash: str = order_result.get("txHash")
@@ -831,12 +829,15 @@ class GatewayEVMAMM(ConnectorBase):
             if self._poll_notifier is not None and not self._poll_notifier.is_set():
                 self._poll_notifier.set()
 
-    async def _update_nonce(self):
+    async def _update_nonce(self, new_nonce: Optional[int] = None):
         """
         Call the gateway API to get the current nonce for self.address
         """
-        resp_json = await GatewayHttpClient.get_instance().get_evm_nonce(self.chain, self.network, self.address)
-        self._nonce = resp_json['nonce']
+        if not new_nonce:
+            resp_json: Dict[str, Any] = await GatewayHttpClient.get_instance().get_evm_nonce(self.chain, self.network, self.address)
+            new_nonce: int = resp_json.get("nonce")
+
+        self._nonce = new_nonce
 
     async def _status_polling_loop(self):
         await self.update_balances(on_interval=False)
