@@ -158,6 +158,8 @@ export interface Uniswapish {
     abi: ContractInterface,
     fee?: number
   ): Promise<string | null>;
+
+  getTradeRoute(trade: UniswapishTrade): string[];
 }
 
 export interface Ethereumish extends EthereumBase {

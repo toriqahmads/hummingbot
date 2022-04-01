@@ -420,4 +420,8 @@ export class UniswapV3 extends UniswapV3Helper implements Uniswapish {
     );
     return pairAddress;
   }
+
+  getTradeRoute(_trade: uniV3.Trade<Token, Token, TradeType>): string[] {
+    return [];
+  }
 }

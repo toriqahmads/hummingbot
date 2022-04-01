@@ -421,14 +421,33 @@ export class Uniswap implements Uniswapish {
       this.ethereum.provider
     );
     const tokens = [quoteToken, baseToken];
-    const [token0, token1] = tokens[0].sortsBefore(tokens[1])
-      ? tokens
-      : [tokens[1], tokens[0]];
+    const [token0, token1] = [tokens[0], tokens[1]];
+    // const [token0, token1] = tokens[0].sortsBefore(tokens[1])
+    //   ? tokens
+    //   : [tokens[1], tokens[0]];
     const pairAddress: string = await contract['getPair'](
       token0.address,
       token1.address
     );
 
     return pairAddress !== zeroAddress ? pairAddress : null;
+  }
+
+  getTradeRoute(trade: Trade): string[] {
+    const path = [];
+
+    if ('path' in trade.route) {
+      let prevTokenSymbol: string | null = null;
+      for (const token of trade.route.path) {
+        const currentTokenSymbol = token.symbol;
+        if (currentTokenSymbol !== undefined) {
+          if (prevTokenSymbol !== null) {
+            path.push(`{prevTokenSymbol}-{currentTokenSymbol}`);
+          }
+          prevTokenSymbol = currentTokenSymbol;
+        }
+      }
+    }
+    return path;
   }
 }

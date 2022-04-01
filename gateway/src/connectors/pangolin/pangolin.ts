@@ -400,4 +400,22 @@ export class Pangolin implements Uniswapish {
     );
     return pairAddress !== zeroAddress ? pairAddress : null;
   }
+
+  getTradeRoute(trade: Trade): string[] {
+    const path = [];
+
+    if ('path' in trade.route) {
+      let prevTokenSymbol: string | null = null;
+      for (const token of trade.route.path) {
+        const currentTokenSymbol = token.symbol;
+        if (currentTokenSymbol !== undefined) {
+          if (prevTokenSymbol !== null) {
+            path.push(`{prevTokenSymbol}-{currentTokenSymbol}`);
+          }
+          prevTokenSymbol = currentTokenSymbol;
+        }
+      }
+    }
+    return path;
+  }
 }

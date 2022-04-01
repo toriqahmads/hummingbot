@@ -2,8 +2,8 @@
   "connector": "uniswap",
   "chain": "ethereum",
   "network": "kovan",
-  "quote": "WETH",
+  "quote": "MKR",
   "base": "DAI",
-  "amount": "1000000000000000000",
+  "amount": "0.1",
   "side": "BUY"
 }
