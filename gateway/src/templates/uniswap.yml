@@ -43,27 +43,7 @@ contractAddresses:
 pools:
   mainnet:
     maxHops: 3
-    pools:
-      - WISE-ETH
-      - USDC-ETH
-      - FEI-TRIBE
-      - ETH-USDT
-      - TOKE-ETH
-      - FXS-FRAX
-      - DAI-USDC
-      - MC-ETH
-      - USDC-USDT
-      - UNI-ETH
-      - WBTC-ETH
-      - ELON-ETH
-      - PAXG-ETH
-      - FNK-USDT
-      - ETH-FOX
-      - DAI-ETH
-      - SYN-FRAX
-      - SHINJA-ETH
-      - XXi-ETH
-      - WAXE-ETH
+    pools: [] # ['WISE-ETH', 'USDC-ETH', 'FEI-TRIBE', 'ETH-USDT', 'TOKE-ETH', 'FXS-FRAX', 'DAI-USDC', 'MC-ETH', 'USDC-USDT']
   kovan:
     maxHops: 3
     pools:

@@ -25,14 +25,3 @@ networks:
     gasPriceRefreshInterval: 60
 nodeAPIKey: ''
 manualGasPrice: 110
-
-pools:
-  mainnet:
-    maxHops: 3
-    pools: [] # ['WISE-ETH', 'USDC-ETH', 'FEI-TRIBE', 'ETH-USDT', 'TOKE-ETH', 'FXS-FRAX', 'DAI-USDC', 'MC-ETH', 'USDC-USDT']
-  kovan:
-    maxHops: 3
-    pools: ['WETH-DAI','WETH-BAT']
-  ropsten:
-    maxHops: 3
-    pools: []
