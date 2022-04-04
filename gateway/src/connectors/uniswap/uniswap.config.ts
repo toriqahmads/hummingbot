@@ -28,19 +28,19 @@ export namespace UniswapConfig {
       ConfigManagerV2.getInstance().get(`uniswap.versions.v${version}.ttl`),
     uniswapV2RouterAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
-        `uniswap.contractAddresses.${network}.uniswapV2RouterAddress`
+        `uniswap.networks.${network}.uniswapV2RouterAddress`
       ),
     uniswapV2FactoryAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
-        `uniswap.contractAddresses.${network}.uniswapV2FactoryAddress`
+        `uniswap.networks.${network}.uniswapV2FactoryAddress`
       ),
     uniswapV3RouterAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
-        `uniswap.contractAddresses.${network}.uniswapV3RouterAddress`
+        `uniswap.networks.${network}.uniswapV3RouterAddress`
       ),
     uniswapV3NftManagerAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
-        `uniswap.contractAddresses.${network}.uniswapV3NftManagerAddress`
+        `uniswap.networks.${network}.uniswapV3NftManagerAddress`
       ),
     tradingTypes: (network: string) =>
       network === 'v2' ? ['EVM_AMM'] : ['EVM_Range_AMM'],
@@ -48,13 +48,13 @@ export namespace UniswapConfig {
       {
         chain: 'ethereum',
         networks: Object.keys(
-          ConfigManagerV2.getInstance().get('uniswap.contractAddresses')
+          ConfigManagerV2.getInstance().get('uniswap.networks')
         ),
       },
     ],
     maxHops: (network: string) =>
-      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.maxHops`),
+      ConfigManagerV2.getInstance().get(`uniswap.networks.${network}.maxHops`),
     pools: (network: string) =>
-      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.pools`),
+      ConfigManagerV2.getInstance().get(`uniswap.networks.${network}.pools`),
   };
 }

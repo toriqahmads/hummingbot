@@ -22,19 +22,19 @@ export namespace PangolinConfig {
     ttl: ConfigManagerV2.getInstance().get('pangolin.ttl'),
     routerAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
-        'pangolin.contractAddresses.' + network + '.routerAddress'
+        'pangolin.networks.' + network + '.routerAddress'
       ),
     factoryAddress: (network: string) =>
       ConfigManagerV2.getInstance().get(
-        'pangolin.contractAddresses.' + network + '.factoryAddress'
+        'pangolin.networks.' + network + '.factoryAddress'
       ),
     tradingTypes: ['EVM_AMM'],
     availableNetworks: [
       { chain: 'avalanche', networks: ['avalanche', 'fuji'] },
     ],
     maxHops: (network: string) =>
-      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.maxHops`),
+      ConfigManagerV2.getInstance().get(`uniswap.networks.${network}.maxHops`),
     pools: (network: string) =>
-      ConfigManagerV2.getInstance().get(`uniswap.pools.${network}.pools`),
+      ConfigManagerV2.getInstance().get(`uniswap.networks.${network}.pools`),
   };
 }

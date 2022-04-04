@@ -9,18 +9,14 @@ gasLimit: 150688
 # perform the trade, but the gas will still be spent.
 ttl: 300
 
-contractAddresses:
+networks:
   fuji:
-      routerAddress: '0xE54Ca86531e17Ef3616d22Ca28b0D458b6C89106'
-      factoryAddress: '0xefa94DE7a4656D787667C749f7E1223D71E9FD88'      
-  avalanche:
-      routerAddress: '0xE54Ca86531e17Ef3616d22Ca28b0D458b6C89106'
-      factoryAddress: '0xefa94DE7a4656D787667C749f7E1223D71E9FD88'
-
-pools:
-  fuji:
+    routerAddress: '0xE54Ca86531e17Ef3616d22Ca28b0D458b6C89106'
+    factoryAddress: '0xefa94DE7a4656D787667C749f7E1223D71E9FD88'      
     maxHops: 1
     pools: []
   avalanche:
+    routerAddress: '0xE54Ca86531e17Ef3616d22Ca28b0D458b6C89106'
+    factoryAddress: '0xefa94DE7a4656D787667C749f7E1223D71E9FD88'
     maxHops: 1
     pools: []
