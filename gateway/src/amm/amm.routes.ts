@@ -5,7 +5,6 @@ import { asyncHandler } from '../services/error-handler';
 import { price, trade, estimateGas } from './amm.controllers';
 import {
   EstimateGasResponse,
-  //  PoolRequest,
   PriceRequest,
   PriceResponse,
   TradeRequest,
@@ -59,13 +58,4 @@ export namespace AmmRoutes {
       }
     )
   );
-
-  // router.post(
-  //   '/pool',
-  //   asyncHandler(
-  //     async (req: Request<{}, {}, PoolRequest>, res: Response<string, {}>) => {
-  //       res.status(200).json(await pool(req.body));
-  //     }
-  //   )
-  // );
 }
