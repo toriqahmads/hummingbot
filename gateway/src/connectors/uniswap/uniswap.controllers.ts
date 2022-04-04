@@ -141,6 +141,7 @@ export async function price(
     gasPriceToken: ethereumish.nativeTokenSymbol,
     gasLimit: gasLimit,
     gasCost: gasCostInEthString(gasPrice, gasLimit),
+    tradeRoute: uniswapish.getTradeRoute(trade),
   };
 }
 
@@ -266,6 +267,7 @@ export async function trade(
       gasCost: gasCostInEthString(gasPrice, gasLimit),
       nonce: tx.nonce,
       txHash: tx.hash,
+      tradeRoute: uniswapish.getTradeRoute(tradeInfo.expectedTrade.trade),
     };
   } else {
     const price: Fractionish = tradeInfo.expectedTrade.trade.executionPrice;
@@ -321,6 +323,7 @@ export async function trade(
       gasCost: gasCostInEthString(gasPrice, gasLimit),
       nonce: tx.nonce,
       txHash: tx.hash,
+      tradeRoute: uniswapish.getTradeRoute(tradeInfo.expectedTrade.trade),
     };
   }
 }

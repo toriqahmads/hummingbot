@@ -22,6 +22,7 @@ export interface PriceResponse {
   gasPriceToken: string;
   gasLimit: number;
   gasCost: string;
+  tradeRoute: string[];
 }
 
 export interface TradeRequest extends NetworkSelectionRequest {
@@ -53,6 +54,7 @@ export interface TradeResponse {
   gasCost: string;
   nonce: number;
   txHash: string | undefined;
+  tradeRoute: string[];
 }
 
 export interface EstimateGasResponse {
