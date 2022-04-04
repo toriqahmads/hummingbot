@@ -398,9 +398,10 @@ export class UniswapV3 extends UniswapV3Helper implements Uniswapish {
   }
 
   async getPool(
-    quoteToken: Token,
-    baseToken: Token,
-    factory: string, // 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
+    tokenA: Token,
+    tokenB: Token,
+
+    factory: string,
     abi: ContractInterface,
     fee?: number
   ): Promise<string> {
@@ -409,19 +410,16 @@ export class UniswapV3 extends UniswapV3Helper implements Uniswapish {
       abi,
       this.ethereum.provider
     );
-    const tokens = [quoteToken, baseToken];
-    const [token0, token1] = tokens[0].sortsBefore(tokens[1])
-      ? tokens
-      : [tokens[1], tokens[0]];
     const pairAddress: string = await contract['getPool'](
-      token0.address,
-      token1.address,
+      tokenA.address,
+      tokenB.address,
       fee
     );
     return pairAddress;
   }
 
   getTradeRoute(_trade: uniV3.Trade<Token, Token, TradeType>): string[] {
+    // to be implemented
     return [];
   }
 }

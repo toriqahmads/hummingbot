@@ -127,11 +127,12 @@ export class Uniswap implements Uniswapish {
           );
 
           const pool = await this.getPool(
-            quoteToken,
             baseToken,
+            quoteToken,
             this._factoryAddress,
             this._factoryAbi
           );
+
           if (pool) {
             const pair: Pair = await Fetcher.fetchPairData(
               baseToken,
@@ -410,8 +411,8 @@ export class Uniswap implements Uniswapish {
    * @param abi Factory contract interface
    */
   async getPool(
-    quoteToken: Token,
-    baseToken: Token,
+    tokenA: Token,
+    tokenB: Token,
     factory: string,
     abi: ContractInterface
   ): Promise<string | null> {
@@ -420,14 +421,9 @@ export class Uniswap implements Uniswapish {
       abi,
       this.ethereum.provider
     );
-    const tokens = [quoteToken, baseToken];
-    const [token0, token1] = [tokens[0], tokens[1]];
-    // const [token0, token1] = tokens[0].sortsBefore(tokens[1])
-    //   ? tokens
-    //   : [tokens[1], tokens[0]];
     const pairAddress: string = await contract['getPair'](
-      token0.address,
-      token1.address
+      tokenA.address,
+      tokenB.address
     );
 
     return pairAddress !== zeroAddress ? pairAddress : null;

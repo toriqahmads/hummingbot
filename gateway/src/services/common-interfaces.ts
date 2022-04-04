@@ -146,14 +146,13 @@ export interface Uniswapish {
    *
    * @param quoteToken Token input for the transaction
    * @param baseToken Token output from the transaction
-   * @param amount Amount of `baseToken` desired from the transaction
-   * @param factory
-   * @param abi
-   * @param fee
+   * @param factory contract
+   * @param abi contract interface
+   * @param fee in uniswapv3 pools are determined by tokens and fee
    */
   getPool(
-    quoteToken: Tokenish,
-    baseToken: Tokenish,
+    tokenA: Tokenish,
+    tokenB: Tokenish,
     factory: string,
     abi: ContractInterface,
     fee?: number
