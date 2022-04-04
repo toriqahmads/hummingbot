@@ -438,7 +438,7 @@ export class Uniswap implements Uniswapish {
         const currentTokenSymbol = token.symbol;
         if (currentTokenSymbol !== undefined) {
           if (prevTokenSymbol !== null) {
-            path.push(`{prevTokenSymbol}-{currentTokenSymbol}`);
+            path.push(`${prevTokenSymbol}-${currentTokenSymbol}`);
           }
           prevTokenSymbol = currentTokenSymbol;
         }
