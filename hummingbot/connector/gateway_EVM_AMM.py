@@ -529,13 +529,15 @@ class GatewayEVMAMM(ConnectorBase):
             gas_limit: int = int(order_result.get("gasLimit"))
             gas_cost: Decimal = Decimal(order_result.get("gasCost"))
             gas_price_token: str = order_result.get("gasPriceToken")
+            trade_route: List[str] = order_result.get("tradeRoute")
+            trade_route_styled: str = "...".join(trade_route)
             tracked_order: GatewayInFlightOrder = self._in_flight_orders.get(order_id)
             self.network_transaction_fee = TokenAmount(gas_price_token, gas_cost)
 
             if tracked_order is not None:
                 self.logger().info(f"Created {trade_type.name} order {order_id} txHash: {transaction_hash} "
                                    f"for {amount} {trading_pair} on {self.network}. Estimated Gas Cost: {gas_cost} "
-                                   f" (gas limit: {gas_limit}, gas price: {gas_price})")
+                                   f" (gas limit: {gas_limit}, gas price: {gas_price}). Trade route: {trade_route_styled}")
                 tracked_order.update_exchange_order_id(transaction_hash)
                 tracked_order.gas_price = gas_price
                 tracked_order.last_state = "OPEN"
