@@ -69,6 +69,11 @@ interface ConfigUpdateRequest {
   configValue: any;
 }
 
+// parse a string encoded array, may be enclosed with [] or not
+export const parseArray = (value: any): string[] => {
+  return value.replace(/^\[?|\]?$/g, '').split(',');
+};
+
 gatewayApp.post(
   '/config/update',
   asyncHandler(
@@ -77,16 +82,22 @@ gatewayApp.post(
       res: Response
     ) => {
       const config = ConfigManagerV2.getInstance().get(req.body.configPath);
-      if (typeof req.body.configValue == 'string')
-        switch (typeof config) {
-          case 'number':
-            req.body.configValue = Number(req.body.configValue);
-            break;
-          case 'boolean':
-            req.body.configValue =
-              req.body.configValue.toLowerCase() === 'true';
-            break;
+      if (typeof req.body.configValue == 'string') {
+        if (Array.isArray(config)) {
+          req.body.configValue = parseArray(req.body.configValue);
+        } else {
+          switch (typeof config) {
+            case 'number':
+              req.body.configValue = Number(req.body.configValue);
+              break;
+            case 'boolean':
+              req.body.configValue =
+                req.body.configValue.toLowerCase() === 'true';
+              break;
+          }
         }
+      }
+
       ConfigManagerV2.getInstance().set(
         req.body.configPath,
         req.body.configValue

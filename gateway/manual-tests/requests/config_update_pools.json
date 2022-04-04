@@ -1,4 +1,4 @@
 {
-  "configPath": "uniswap.pools.mainnet.pools",
-  "configValue": ["USDC-ETH"]
+  "configPath": "uniswap.networks.kovan.pools",
+  "configValue": ["WETH-DAI", "WETH-BAT"]
 }
