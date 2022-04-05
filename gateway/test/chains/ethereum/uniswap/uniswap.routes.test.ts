@@ -148,24 +148,6 @@ const patchExecuteTrade = () => {
   });
 };
 
-// const patchTrade = (key: string, error?: Error) => {
-//   patch(Trade, key, () => {
-//     if (error) return [];
-//     const WETH_DAI = new Pair(
-//       new TokenAmount(WETH, '2000000000000000000'),
-//       new TokenAmount(DAI, '1000000000000000000')
-//     );
-//     const DAI_TO_WETH = new Route([WETH_DAI], DAI);
-//     return [
-//       new Trade(
-//         DAI_TO_WETH,
-//         new TokenAmount(DAI, '1000000000000000'),
-//         TradeType.EXACT_INPUT
-//       ),
-//     ];
-//   });
-// };
-
 describe('POST /amm/price', () => {
   it('should return 200 for BUY', async () => {
     patchGetWallet();
@@ -176,8 +158,6 @@ describe('POST /amm/price', () => {
     patchGasPrice();
     patchEstimateBuyTrade();
     patchGetNonce();
-    // patchTrade('bestTradeExactOut');
-    // patchTrade('bestTradeExactIn');
     patchExecuteTrade();
 
     await request(app)
