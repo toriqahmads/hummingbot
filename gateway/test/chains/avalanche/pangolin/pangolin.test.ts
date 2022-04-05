@@ -23,6 +23,7 @@ const WETH = new Token(
   18,
   'WETH'
 );
+
 const WAVAX = new Token(
   43114,
   '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7',
@@ -34,6 +35,7 @@ beforeAll(async () => {
   avalanche = Avalanche.getInstance('fuji');
   await avalanche.init();
   pangolin = Pangolin.getInstance('avalanche', 'fuji');
+  patch(pangolin, '_poolStrings', []); // this avoids pangolin from trying to download pool data
   await pangolin.init();
 });
 

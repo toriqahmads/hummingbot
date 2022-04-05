@@ -34,6 +34,7 @@ beforeAll(async () => {
   ethereum = Ethereum.getInstance('kovan');
   await ethereum.init();
   uniswap = Uniswap.getInstance('ethereum', 'kovan');
+  patch(uniswap, '_poolStrings', []); // this avoids uniswap from trying to download pool data
   await uniswap.init();
 });
 
@@ -67,6 +68,7 @@ const patchTrade = (key: string, error?: Error) => {
     ];
   });
 };
+
 describe('verify Uniswap estimateSellTrade', () => {
   it('Should return an ExpectedTrade when available', async () => {
     patchFetchPairData();
@@ -112,17 +114,5 @@ describe('verify Uniswap estimateBuyTrade', () => {
     await expect(async () => {
       await uniswap.estimateBuyTrade(WETH, DAI, BigNumber.from(1));
     }).rejects.toThrow(UniswapishPriceError);
-  });
-});
-
-describe('verify Uniswap getPoolAddress', () => {
-  it('Should return an address for an existing pool', async () => {
-    const expectedPoolAddress = await uniswap.getPool(
-      WETH,
-      DAI,
-      '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
-      uniswap.factoryAbi
-    );
-    expect(expectedPoolAddress).toHaveProperty('0x');
   });
 });
