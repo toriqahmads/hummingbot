@@ -53,23 +53,25 @@ const patchFetchPairData = () => {
   });
 };
 
+const mkWethToWavaxTrade = (): Trade => {
+  const WETH_WAVAX = new Pair(
+    new TokenAmount(WETH, '2000000000000000000'),
+    new TokenAmount(WAVAX, '1000000000000000000'),
+    43114
+  );
+  const WAVAX_TO_WETH = new Route([WETH_WAVAX], WAVAX);
+  return new Trade(
+    WAVAX_TO_WETH,
+    new TokenAmount(WAVAX, '1000000000000000'),
+    TradeType.EXACT_INPUT,
+    43114
+  );
+};
+
 const patchTrade = (key: string, error?: Error) => {
   patch(Trade, key, () => {
     if (error) return [];
-    const WETH_WAVAX = new Pair(
-      new TokenAmount(WETH, '2000000000000000000'),
-      new TokenAmount(WAVAX, '1000000000000000000'),
-      43114
-    );
-    const WAVAX_TO_WETH = new Route([WETH_WAVAX], WAVAX);
-    return [
-      new Trade(
-        WAVAX_TO_WETH,
-        new TokenAmount(WAVAX, '1000000000000000'),
-        TradeType.EXACT_INPUT,
-        43114
-      ),
-    ];
+    return [mkWethToWavaxTrade()];
   });
 };
 
@@ -118,5 +120,48 @@ describe('verify Pangolin estimateBuyTrade', () => {
     await expect(async () => {
       await pangolin.estimateBuyTrade(WETH, WAVAX, BigNumber.from(1));
     }).rejects.toThrow(UniswapishPriceError);
+  });
+});
+
+const patchGetPoolToNull = () => {
+  patch(pangolin, 'getPool', (_tokenA: Token, _tokenB: Token) => {
+    return null;
+  });
+};
+
+const patchGetPool = () => {
+  patch(pangolin, 'getPool', (_tokenA: Token, _tokenB: Token) => {
+    return '0x3D2097889B97A9eF23B3eA8FC10c626fbda29099';
+  });
+};
+
+describe('getPool', () => {
+  it('Return null for non-existant pool', async () => {
+    patchGetPoolToNull();
+    const address = await pangolin.getPool(
+      WETH,
+      WAVAX,
+      pangolin.factoryAddress,
+      pangolin.factoryAbi
+    );
+    expect(address).toEqual(null);
+  });
+
+  it('Return address for pool', async () => {
+    patchGetPool();
+    const address = await pangolin.getPool(
+      WETH,
+      WAVAX,
+      pangolin.factoryAddress,
+      pangolin.factoryAbi
+    );
+    expect(address).toEqual('0x3D2097889B97A9eF23B3eA8FC10c626fbda29099');
+  });
+});
+
+describe('getTradeRoute', () => {
+  it('Return wavax to weth trade route', async () => {
+    const tradeRoute = pangolin.getTradeRoute(mkWethToWavaxTrade());
+    expect(tradeRoute).toEqual(['WAVAX-WETH']);
   });
 });

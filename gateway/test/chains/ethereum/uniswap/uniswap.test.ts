@@ -51,21 +51,23 @@ const patchFetchPairData = () => {
   });
 };
 
+const mkDaiToWethTrade = (): Trade => {
+  const WETH_DAI = new Pair(
+    new TokenAmount(WETH, '2000000000000000000'),
+    new TokenAmount(DAI, '1000000000000000000')
+  );
+  const DAI_TO_WETH = new Route([WETH_DAI], DAI);
+  return new Trade(
+    DAI_TO_WETH,
+    new TokenAmount(DAI, '1000000000000000'),
+    TradeType.EXACT_INPUT
+  );
+};
+
 const patchTrade = (key: string, error?: Error) => {
   patch(Trade, key, () => {
     if (error) return [];
-    const WETH_DAI = new Pair(
-      new TokenAmount(WETH, '2000000000000000000'),
-      new TokenAmount(DAI, '1000000000000000000')
-    );
-    const DAI_TO_WETH = new Route([WETH_DAI], DAI);
-    return [
-      new Trade(
-        DAI_TO_WETH,
-        new TokenAmount(DAI, '1000000000000000'),
-        TradeType.EXACT_INPUT
-      ),
-    ];
+    return [mkDaiToWethTrade()];
   });
 };
 
@@ -114,5 +116,48 @@ describe('verify Uniswap estimateBuyTrade', () => {
     await expect(async () => {
       await uniswap.estimateBuyTrade(WETH, DAI, BigNumber.from(1));
     }).rejects.toThrow(UniswapishPriceError);
+  });
+});
+
+const patchGetPoolToNull = () => {
+  patch(uniswap, 'getPool', (_tokenA: Token, _tokenB: Token) => {
+    return null;
+  });
+};
+
+const patchGetPool = () => {
+  patch(uniswap, 'getPool', (_tokenA: Token, _tokenB: Token) => {
+    return '0x3D2097889B97A9eF23B3eA8FC10c626fbda29099';
+  });
+};
+
+describe('getPool', () => {
+  it('Return null for non-existant pool', async () => {
+    patchGetPoolToNull();
+    const address = await uniswap.getPool(
+      WETH,
+      DAI,
+      uniswap.factoryAddress,
+      uniswap.factoryAbi
+    );
+    expect(address).toEqual(null);
+  });
+
+  it('Return address for pool', async () => {
+    patchGetPool();
+    const address = await uniswap.getPool(
+      WETH,
+      DAI,
+      uniswap.factoryAddress,
+      uniswap.factoryAbi
+    );
+    expect(address).toEqual('0x3D2097889B97A9eF23B3eA8FC10c626fbda29099');
+  });
+});
+
+describe('getTradeRoute', () => {
+  it('Return dai to weth trade route', async () => {
+    const tradeRoute = uniswap.getTradeRoute(mkDaiToWethTrade());
+    expect(tradeRoute).toEqual(['DAI-WETH']);
   });
 });

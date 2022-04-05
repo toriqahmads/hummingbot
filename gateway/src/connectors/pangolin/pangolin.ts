@@ -398,6 +398,11 @@ export class Pangolin implements Uniswapish {
     return pairAddress !== zeroAddress ? pairAddress : null;
   }
 
+  /**
+   * Return the list of pools used to check a price or make a trade.
+   *
+   * @param trade Pangolin trade
+   */
   getTradeRoute(trade: Trade): string[] {
     const path = [];
 
