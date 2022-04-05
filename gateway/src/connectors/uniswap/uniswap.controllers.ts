@@ -77,8 +77,6 @@ export async function getTradeInfo(
     );
   }
 
-  console.log(expectedTrade.trade.route);
-
   return {
     baseToken,
     quoteToken,

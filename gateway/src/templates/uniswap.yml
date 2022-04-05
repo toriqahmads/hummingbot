@@ -1,3 +1,6 @@
+# data source for pools
+# https://v2.info.uniswap.org/home
+
 versions:
   v2:
     # how much the execution price is allowed to move unfavorably from the trade

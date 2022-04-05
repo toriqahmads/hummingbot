@@ -1,5 +1,3 @@
-# data source for pools
-# https://v2.info.uniswap.org/home
 networks:
   mainnet:
     chainID: 1

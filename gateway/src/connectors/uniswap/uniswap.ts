@@ -29,18 +29,6 @@ import { Ethereum } from '../../chains/ethereum/ethereum';
 import { zeroAddress } from '../../services/ethereum-base';
 import { ExpectedTrade, Uniswapish } from '../../services/common-interfaces';
 
-export async function safeFetchPairData(
-  tokenA: Token,
-  tokenB: Token,
-  provider: any
-): Promise<Pair> {
-  const tokens = [tokenA, tokenB];
-  const [tokenA_, tokenB_] = tokens[0].sortsBefore(tokens[1])
-    ? tokens
-    : [tokens[1], tokens[0]];
-  return await Fetcher.fetchPairData(tokenB_, tokenA_, provider);
-}
-
 export class Uniswap implements Uniswapish {
   private static _instances: { [name: string]: Uniswap };
   private ethereum: Ethereum;
@@ -98,9 +86,10 @@ export class Uniswap implements Uniswapish {
    * The user sets an array of direct pools in their config to be used to find
    * the least expensive route for a trade. This creates the pairs to be used
    * in the route calculation. We do this on initiation because it requires
-   * asynchronous network calls
+   * asynchronous network calls. This checks the pool actually exists on Uniswap.
+   * If it does not, then the pair is ignored.
    */
-  public async updatePools() {
+  public async initDirectPools() {
     for (const pair of this._poolStrings) {
       const splitPair = pair.split('-');
       if (splitPair.length === 2) {
@@ -180,7 +169,7 @@ export class Uniswap implements Uniswapish {
       );
     }
 
-    await this.updatePools();
+    await this.initDirectPools();
 
     this._ready = true;
   }
@@ -429,6 +418,11 @@ export class Uniswap implements Uniswapish {
     return pairAddress !== zeroAddress ? pairAddress : null;
   }
 
+  /**
+   * Return the list of pools used to check a price or make a trade.
+   *
+   * @param trade Uniswap trade
+   */
   getTradeRoute(trade: Trade): string[] {
     const path = [];
 
