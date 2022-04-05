@@ -10,6 +10,7 @@ beforeAll(async () => {
   avalanche = Avalanche.getInstance('fuji');
   await avalanche.init();
   pangolin = Pangolin.getInstance('avalanche', 'fuji');
+  patch(pangolin, '_poolStrings', []); // this avoids pangolin from trying to download pool data
   await pangolin.init();
 });
 
@@ -18,6 +19,10 @@ afterEach(() => {
 });
 
 const address: string = '0xFaA12FD102FE8623C9299c72B03E45107F2772B5';
+
+const patchGetTradeRoute = () => {
+  patch(pangolin, 'getTradeRoute', () => []);
+};
 
 const patchGetWallet = () => {
   patch(avalanche, 'getWallet', () => {
@@ -132,6 +137,7 @@ const patchExecuteTrade = () => {
 
 describe('POST /amm/price', () => {
   it('should return 200 for BUY', async () => {
+    patchGetTradeRoute();
     patchGetWallet();
     patchStoredTokenList();
     patchGetTokenBySymbol();
@@ -162,6 +168,7 @@ describe('POST /amm/price', () => {
 
   it('should return 200 for SELL', async () => {
     patchGetWallet();
+    patchGetTradeRoute();
     patchStoredTokenList();
     patchGetTokenBySymbol();
     patchGetTokenByAddress();
@@ -269,6 +276,7 @@ describe('POST /amm/trade', () => {
   };
   it('should return 200 for BUY', async () => {
     patchForBuy();
+    patchGetTradeRoute();
     await request(gatewayApp)
       .post(`/amm/trade`)
       .send({
@@ -291,6 +299,7 @@ describe('POST /amm/trade', () => {
 
   it('should return 200 for BUY without nonce parameter', async () => {
     patchForBuy();
+    patchGetTradeRoute();
     await request(gatewayApp)
       .post(`/amm/trade`)
       .send({
@@ -309,6 +318,7 @@ describe('POST /amm/trade', () => {
 
   it('should return 200 for BUY with maxFeePerGas and maxPriorityFeePerGas', async () => {
     patchForBuy();
+    patchGetTradeRoute();
     await request(gatewayApp)
       .post(`/amm/trade`)
       .send({
@@ -340,6 +350,7 @@ describe('POST /amm/trade', () => {
   };
   it('should return 200 for SELL', async () => {
     patchForSell();
+    patchGetTradeRoute();
     await request(gatewayApp)
       .post(`/amm/trade`)
       .send({
@@ -362,6 +373,7 @@ describe('POST /amm/trade', () => {
 
   it('should return 200 for SELL  with maxFeePerGas and maxPriorityFeePerGas', async () => {
     patchForSell();
+    patchGetTradeRoute();
     await request(gatewayApp)
       .post(`/amm/trade`)
       .send({
@@ -400,6 +412,7 @@ describe('POST /amm/trade', () => {
 
   it('should return 500 when base token is unknown', async () => {
     patchForSell();
+    patchGetTradeRoute();
     patch(avalanche, 'getTokenBySymbol', (symbol: string) => {
       if (symbol === 'WETH') {
         return {
@@ -435,6 +448,7 @@ describe('POST /amm/trade', () => {
 
   it('should return 500 when quote token is unknown', async () => {
     patchForSell();
+    patchGetTradeRoute();
     patch(avalanche, 'getTokenBySymbol', (symbol: string) => {
       if (symbol === 'WETH') {
         return {
@@ -470,6 +484,7 @@ describe('POST /amm/trade', () => {
 
   it('should return 200 for SELL with limitPrice', async () => {
     patchForSell();
+    patchGetTradeRoute();
     await request(gatewayApp)
       .post(`/amm/trade`)
       .send({
@@ -490,6 +505,7 @@ describe('POST /amm/trade', () => {
 
   it('should return 200 for BUY with limitPrice', async () => {
     patchForBuy();
+    patchGetTradeRoute();
     await request(gatewayApp)
       .post(`/amm/trade`)
       .send({

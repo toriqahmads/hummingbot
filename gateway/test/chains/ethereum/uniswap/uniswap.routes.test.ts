@@ -11,12 +11,22 @@ let app: Express;
 let ethereum: Ethereum;
 let uniswap: Uniswap;
 
+const patchInit = () => {
+  patch(uniswap, '_poolStrings', []); // this avoids uniswap from trying to download pool data
+  patch(uniswap, '_pools', []); // this avoids uniswap from trying to download pool data
+  patch(uniswap, 'getTradeRoute', () => []);
+  patch(uniswap, 'init', async () => {
+    return;
+  });
+};
+
 beforeAll(async () => {
   app = express();
   app.use(express.json());
   ethereum = Ethereum.getInstance('kovan');
   await ethereum.init();
   uniswap = Uniswap.getInstance('ethereum', 'kovan');
+  patchInit();
   await uniswap.init();
   app.use('/amm', AmmRoutes.router);
 });
@@ -32,12 +42,6 @@ const patchGetWallet = () => {
     return {
       address: '0xFaA12FD102FE8623C9299c72B03E45107F2772B5',
     };
-  });
-};
-
-const patchInit = () => {
-  patch(uniswap, 'init', async () => {
-    return;
   });
 };
 
@@ -144,6 +148,24 @@ const patchExecuteTrade = () => {
   });
 };
 
+// const patchTrade = (key: string, error?: Error) => {
+//   patch(Trade, key, () => {
+//     if (error) return [];
+//     const WETH_DAI = new Pair(
+//       new TokenAmount(WETH, '2000000000000000000'),
+//       new TokenAmount(DAI, '1000000000000000000')
+//     );
+//     const DAI_TO_WETH = new Route([WETH_DAI], DAI);
+//     return [
+//       new Trade(
+//         DAI_TO_WETH,
+//         new TokenAmount(DAI, '1000000000000000'),
+//         TradeType.EXACT_INPUT
+//       ),
+//     ];
+//   });
+// };
+
 describe('POST /amm/price', () => {
   it('should return 200 for BUY', async () => {
     patchGetWallet();
@@ -154,6 +176,8 @@ describe('POST /amm/price', () => {
     patchGasPrice();
     patchEstimateBuyTrade();
     patchGetNonce();
+    // patchTrade('bestTradeExactOut');
+    // patchTrade('bestTradeExactIn');
     patchExecuteTrade();
 
     await request(app)
