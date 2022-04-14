@@ -145,7 +145,7 @@ class ClientOrderTracker:
         self._connector.trigger_event(
             MarketEvent.OrderCancelled,
             OrderCancelledEvent(
-                timestamp=self.current_timestamp,
+                timestamp=order.last_update_timestamp,
                 order_id=order.client_order_id,
                 exchange_order_id=order.exchange_order_id,
             ),
