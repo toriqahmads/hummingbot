@@ -167,7 +167,7 @@ class GatewayEVMAMM(ConnectorBase):
     def approval_orders(self) -> List[GatewayInFlightOrder]:
         return [
             approval_order
-            for approval_order in self._order_tracker.active_orders.values()
+            for approval_order in self._order_tracker.all_orders.values()
             if approval_order.is_approval_request
         ]
 
@@ -226,8 +226,7 @@ class GatewayEVMAMM(ConnectorBase):
         for order in self.approval_orders:
             if token in order.client_order_id:
                 return order.is_pending_approval
-        # TODO: Check what should be default return value here
-        return False
+        return True
 
     async def get_chain_info(self):
         """
