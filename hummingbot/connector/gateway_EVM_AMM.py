@@ -168,7 +168,7 @@ class GatewayEVMAMM(ConnectorBase):
         return [
             approval_order
             for approval_order in self._order_tracker.active_orders.values()
-            if approval_order.is_pending_approval
+            if approval_order.is_approval_request
         ]
 
     @property
@@ -224,7 +224,7 @@ class GatewayEVMAMM(ConnectorBase):
 
     def is_pending_approval(self, token: str) -> bool:
         for order in self.approval_orders:
-            if order.is_approval_request and token in order.client_order_id:
+            if token in order.client_order_id:
                 return order.is_pending_approval
         # TODO: Check what should be default return value here
         return False
@@ -284,9 +284,10 @@ class GatewayEVMAMM(ConnectorBase):
         :param token_symbol: token to approve.
         """
         approval_id: str = self.create_approval_order_id(token_symbol)
-        await self._update_nonce()
 
-        self.start_tracking_order(approval_id, None, token_symbol)
+        self.start_tracking_order(order_id=approval_id,
+                                  trading_pair=token_symbol,
+                                  is_approval=True)
         resp: Dict[str, Any] = await GatewayHttpClient.get_instance().approve_token(
             self.chain,
             self.network,
@@ -299,7 +300,7 @@ class GatewayEVMAMM(ConnectorBase):
         if "hash" in resp.get("approval", {}).keys():
             approval_hash = resp["approval"]["hash"]
             tracked_order = self._order_tracker.fetch_order(client_order_id=approval_id)
-            tracked_order
+            tracked_order.current_state = OrderState.APPROVED
             tracked_order.update_exchange_order_id(approval_hash)
             tracked_order.nonce = resp["nonce"]
             self.logger().info(
@@ -575,6 +576,7 @@ class GatewayEVMAMM(ConnectorBase):
                 gas_price=gas_price,
                 creation_timestamp=self.current_timestamp,
                 is_approval=is_approval,
+                initial_state=OrderState.PENDING_APPROVAL if is_approval else OrderState.PENDING_CREATE
             )
         )
 
@@ -828,16 +830,6 @@ class GatewayEVMAMM(ConnectorBase):
         if time.time() - self._last_poll_timestamp > self.POLL_INTERVAL:
             if self._poll_notifier is not None and not self._poll_notifier.is_set():
                 self._poll_notifier.set()
-
-    async def _update_nonce(self, new_nonce: Optional[int] = None):
-        """
-        Call the gateway API to get the current nonce for self.address
-        """
-        if not new_nonce:
-            resp_json: Dict[str, Any] = await GatewayHttpClient.get_instance().get_evm_nonce(self.chain, self.network, self.address)
-            new_nonce: int = resp_json.get("nonce")
-
-        self._nonce = new_nonce
 
     async def _status_polling_loop(self):
         await self.update_balances(on_interval=False)
