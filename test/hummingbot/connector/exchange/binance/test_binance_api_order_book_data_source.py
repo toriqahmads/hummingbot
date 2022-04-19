@@ -138,6 +138,21 @@ class BinanceAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self.data_source.get_new_order_book(self.trading_pair)
         )
 
+        self.assertEqual(0, len(result))
+
+    @aioresponses()
+    def test_get_new_order_book_successful(self, mock_api):
+        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+
+        resp = self._snapshot_response()
+
+        mock_api.get(regex_url, body=json.dumps(resp))
+
+        order_book: OrderBook = self.async_run_with_timeout(
+            self.data_source.get_new_order_book(self.trading_pair)
+        )
+
         expected_update_id = resp["lastUpdateId"]
 
         self.assertEqual(expected_update_id, order_book.snapshot_uid)

@@ -89,7 +89,7 @@ class CoinflexAPIUserStreamDataSource(UserStreamTrackerDataSource):
                     ws_url=web_utils.websocket_url(domain=self._domain),
                     ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
                 await ws.send(WSJSONRequest({}, is_auth_required=True))
-                await self._subscribe_channels(websocket_assistant=ws)
+                await self._subscribe_channels(ws)
                 await ws.ping()  # to update last_recv_timestamp
 
                 async for ws_response in ws.iter_messages():

@@ -55,6 +55,6 @@ async def get_current_server_time(throttler: Optional[AsyncThrottler] = None) ->
         method=RESTMethod.GET,
         throttler_limit_id=CONSTANTS.OKEX_SERVER_TIME_PATH,
     )
-    server_time = float(response["data"][0]["ts"])
+    server_time = float(response["data"]["ts"])
 
     return server_time

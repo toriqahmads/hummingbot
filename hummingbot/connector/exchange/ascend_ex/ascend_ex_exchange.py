@@ -112,7 +112,7 @@ class AscendExExchange(ExchangeBase):
         self._throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS)
         self._api_factory = build_api_factory(throttler=self._throttler, auth=self._ascend_ex_auth)
         self._rest_assistant = None
-        self._set_order_book_tracker(AscendExOrderBookTracker(
+        self._order_book_tracker = AscendExOrderBookTracker(
             api_factory=self._api_factory, throttler=self._throttler, trading_pairs=self._trading_pairs
         ))
         self._user_stream_tracker = AscendExUserStreamTracker(

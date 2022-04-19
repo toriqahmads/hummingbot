@@ -6,23 +6,34 @@ from hummingbot.connector.exchange.kucoin import (
     kucoin_constants as CONSTANTS,
     kucoin_web_utils as web_utils,
 )
+from hummingbot.connector.exchange.kucoin.kucoin_auth import KucoinAuth
+from hummingbot.connector.time_synchronizer import TimeSynchronizer
+from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod, WSJSONRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
-from hummingbot.logger import HummingbotLogger
 
 
 class KucoinAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
-    _logger: Optional[HummingbotLogger] = None
-
     def __init__(self,
-                 api_factory: WebAssistantsFactory,
-                 domain: str = CONSTANTS.DEFAULT_DOMAIN):
+                 auth: KucoinAuth,
+                 domain: str = CONSTANTS.DEFAULT_DOMAIN,
+                 api_factory: Optional[WebAssistantsFactory] = None,
+                 throttler: Optional[AsyncThrottler] = None,
+                 time_synchronizer: Optional[TimeSynchronizer] = None, ):
         super().__init__()
+        self._auth: KucoinAuth = auth
+        self._time_synchronizer = time_synchronizer
         self._domain = domain
-        self._api_factory = api_factory
+        self._throttler = throttler
+        self._api_factory = api_factory or web_utils.build_api_factory(
+            throttler=self._throttler,
+            time_synchronizer=self._time_synchronizer,
+            domain=self._domain,
+            auth=self._auth,
+        )
         self._last_ws_message_sent_timestamp = 0
         self._ping_interval = 0
 
@@ -43,7 +54,7 @@ class KucoinAPIUserStreamDataSource(UserStreamTrackerDataSource):
         await ws.connect(ws_url=f"{ws_url}?token={token}", message_timeout=self._ping_interval)
         return ws
 
-    async def _subscribe_channels(self, websocket_assistant: WSAssistant):
+    async def _subscribe_channels(self, ws: WSAssistant):
         """
         Subscribes to order events and balance events.
 

@@ -9,15 +9,12 @@ from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
-from hummingbot.logger import HummingbotLogger
 
 
 class BinanceAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
     LISTEN_KEY_KEEP_ALIVE_INTERVAL = 1800  # Recommended to Ping/Update listen key to keep connection alive
     HEARTBEAT_TIME_INTERVAL = 30.0
-
-    _logger: Optional[HummingbotLogger] = None
 
     def __init__(self,
                  auth: BinanceAuth,
@@ -27,7 +24,12 @@ class BinanceAPIUserStreamDataSource(UserStreamTrackerDataSource):
         self._auth: BinanceAuth = auth
         self._current_listen_key = None
         self._domain = domain
-        self._api_factory = api_factory
+        self._throttler = throttler
+        self._api_factory = api_factory or web_utils.build_api_factory(
+            throttler=self._throttler,
+            time_synchronizer=self._time_synchronizer,
+            domain=self._domain,
+            auth=self._auth)
 
         self._listen_key_initialized_event: asyncio.Event = asyncio.Event()
         self._last_listen_key_ping_ts = 0
@@ -44,13 +46,13 @@ class BinanceAPIUserStreamDataSource(UserStreamTrackerDataSource):
         await ws.connect(ws_url=url, ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
         return ws
 
-    async def _subscribe_channels(self, websocket_assistant: WSAssistant):
+    async def _subscribe_channels(self, ws: WSAssistant):
         """
         Subscribes to the trade events and diff orders events through the provided websocket connection.
 
         Binance does not require any channel subscription.
 
-        :param websocket_assistant: the websocket assistant used to connect to the exchange
+        :param ws: the websocket assistant used to connect to the exchange
         """
         pass
 

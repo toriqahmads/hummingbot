@@ -55,7 +55,7 @@ class CoinflexExchange(ExchangeBase):
             secret_key=coinflex_api_secret)
         self._throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS)
         self._api_factory = web_utils.build_api_factory(throttler=self._throttler, auth=self._auth)
-        self._set_order_book_tracker(CoinflexOrderBookTracker(
+        self._order_book_tracker = CoinflexOrderBookTracker(
             trading_pairs=trading_pairs,
             domain=domain,
             api_factory=self._api_factory,

@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from hummingbot.client.config.config_methods import using_exchange
 from hummingbot.client.config.config_var import ConfigVar
-from hummingbot.core.data_type.trade_fee import TradeFeeSchema
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.web_assistant.auth import AuthBase
 from hummingbot.core.web_assistant.connections.data_types import RESTRequest

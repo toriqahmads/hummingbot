@@ -82,7 +82,7 @@ class BitmartExchange(ExchangeBase):
         self._bitmart_auth = BitmartAuth(api_key=bitmart_api_key,
                                          secret_key=bitmart_secret_key,
                                          memo=bitmart_memo)
-        self._set_order_book_tracker(BitmartOrderBookTracker(
+        self._order_book_tracker = BitmartOrderBookTracker(
             throttler=self._throttler, trading_pairs=trading_pairs
         ))
         self._user_stream_tracker = BitmartUserStreamTracker(

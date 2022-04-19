@@ -2,13 +2,16 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
+from decimal import Decimal
 from typing import Any, Dict, List, Mapping, Optional
 
 from bidict import bidict
 
-from hummingbot.connector.exchange.coinflex import coinflex_constants as CONSTANTS
-from hummingbot.connector.exchange.coinflex import coinflex_utils
-from hummingbot.connector.exchange.coinflex import coinflex_web_utils as web_utils
+from hummingbot.connector.exchange.coinflex import (
+    coinflex_constants as CONSTANTS,
+    coinflex_utils,
+    coinflex_web_utils as web_utils,
+)
 from hummingbot.connector.exchange.coinflex.coinflex_order_book import CoinflexOrderBook
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.order_book import OrderBook
