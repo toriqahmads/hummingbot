@@ -68,7 +68,6 @@ class GatewayEVMAMM(ConnectorBase):
     _last_poll_timestamp: float
     _last_balance_poll_timestamp: float
     _last_est_gas_cost_reported: float
-    _in_flight_orders: Dict[str, GatewayInFlightOrder]
     _allowances: Dict[str, Decimal]
     _chain_info: Dict[str, Any]
     _status_polling_task: Optional[asyncio.Task]
