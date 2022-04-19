@@ -873,7 +873,7 @@ class GatewayEVMAMM(ConnectorBase):
                 del self._account_available_balances[asset_name]
                 del self._account_balances[asset_name]
 
-            self._in_flight_orders_snapshot = {k: copy.copy(v) for k, v in self.in_flight_orders.items()}
+            self._in_flight_orders_snapshot = {k: copy.copy(v) for k, v in self._order_tracker.all_orders.items()}
             self._in_flight_orders_snapshot_timestamp = self.current_timestamp
 
     async def _update_balances(self):
