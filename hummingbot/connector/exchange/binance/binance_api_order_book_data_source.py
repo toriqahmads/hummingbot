@@ -16,9 +16,6 @@ from hummingbot.core.web_assistant.connections.data_types import RESTMethod, WSJ
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 
-if TYPE_CHECKING:
-    from hummingbot.connector.exchange.binance.binance_exchange import BinanceExchange
-
 
 class BinanceAPIOrderBookDataSource(OrderBookTrackerDataSource):
     HEARTBEAT_TIME_INTERVAL = 30.0

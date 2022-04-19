@@ -10,7 +10,6 @@ from hummingbot.core.web_assistant.connections.data_types import WSJSONRequest, 
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 
-    _logger: Optional[HummingbotLogger] = None
 
 class OkexAPIUserStreamDataSource(UserStreamTrackerDataSource):
 

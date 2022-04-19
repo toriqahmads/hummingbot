@@ -212,6 +212,11 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
         """
         Create an instance of OrderBookMessage of type OrderBookMessageType.TRADE
 
+        :param raw_message: the JSON dictionary of the public trade event
+        :param message_queue: queue where the parsed messages should be stored in
+        """
+        raise NotImplementedError
+
     async def get_new_order_book(self, trading_pair: str) -> OrderBook:
         """
         Creates a local instance of the exchange order book for a particular trading pair
@@ -225,7 +230,13 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
         order_book.apply_snapshot(snapshot_msg.bids, snapshot_msg.asks, snapshot_msg.update_id)
         return order_book
 
-    async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
+    @classmethod
+    async def _init_trading_pair_symbols(
+            cls,
+            domain: Optional[str] = None,
+            api_factory: Optional[WebAssistantsFactory] = None,
+            throttler: Optional[AsyncThrottler] = None,
+            time_synchronizer: Optional[TimeSynchronizer] = None):
         """
         Connects to the trade events and order diffs websocket endpoints and listens to the messages sent by the
         exchange. Each message is stored in its own queue.
