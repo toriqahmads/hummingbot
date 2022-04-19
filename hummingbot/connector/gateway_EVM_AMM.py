@@ -904,7 +904,7 @@ class GatewayEVMAMM(ConnectorBase):
             if tracked_order.is_done:
                 return None
 
-            if tracked_order.is_cancelling:
+            if tracked_order.is_pending_cancel_confirmation:
                 return order_id
 
             self.logger().info(f"The blockchain transaction for {order_id} with nonce {tracked_order.nonce} has "
@@ -945,7 +945,7 @@ class GatewayEVMAMM(ConnectorBase):
         """
         incomplete_orders: List[GatewayInFlightOrder] = [
             o for o in self.amm_orders
-            if not (o.is_done or o.is_cancelling)
+            if not (o.is_done or o.is_pending_cancel_confirmation)
         ]
         if len(incomplete_orders) < 1:
             return []
