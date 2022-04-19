@@ -895,7 +895,7 @@ class GatewayEVMAMM(ConnectorBase):
         and if the order is not done or already in the cancelling state.
         """
         try:
-            tracked_order: GatewayInFlightOrder = self.in_flight_orders.get(order_id)
+            tracked_order: GatewayInFlightOrder = self._order_tracker.fetch_order(client_order_id=order_id)
             if tracked_order is None:
                 self.logger().error(f"The order {order_id} is not being tracked.")
                 raise ValueError(f"The order {order_id} is not being tracked.")
@@ -958,8 +958,6 @@ class GatewayEVMAMM(ConnectorBase):
 
         try:
             async with timeout(timeout_seconds):
-                # XXX (martin_kou): We CANNOT perform parallel transactions before the nonce architecture is fixed.
-                # See: https://app.shortcut.com/coinalpha/story/24553/nonce-architecture-in-current-amm-trade-and-evm-approve-apis-is-incorrect-and-causes-trouble-with-concurrent-requests
                 for incomplete_order in incomplete_orders:
                     try:
                         canceling_order_id: Optional[str] = await self._execute_cancel(
