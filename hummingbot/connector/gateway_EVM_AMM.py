@@ -573,7 +573,6 @@ class GatewayEVMAMM(ConnectorBase):
                 amount=amount,
                 gas_price=gas_price,
                 creation_timestamp=self.current_timestamp,
-                is_approval=is_approval,
                 initial_state=OrderState.PENDING_APPROVAL if is_approval else OrderState.PENDING_CREATE
             )
         )

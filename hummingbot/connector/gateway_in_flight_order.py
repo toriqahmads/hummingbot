@@ -22,8 +22,7 @@ class GatewayInFlightOrder(InFlightOrder):
                  amount: Decimal,
                  creation_timestamp: float,
                  gas_price: Optional[Decimal] = Decimal("0"),
-                 initial_state: str = OrderState.PENDING_CREATE,
-                 is_approval: bool = False):
+                 initial_state: str = OrderState.PENDING_CREATE):
         super().__init__(
             client_order_id=client_order_id,
             exchange_order_id=exchange_order_id,
@@ -33,7 +32,7 @@ class GatewayInFlightOrder(InFlightOrder):
             price=price,
             amount=amount,
             creation_timestamp=creation_timestamp,
-            initial_state=initial_state if not is_approval else OrderState.PENDING_APPROVAL,
+            initial_state=initial_state
         )
         self._gas_price = gas_price
         self._nonce: int = 0
