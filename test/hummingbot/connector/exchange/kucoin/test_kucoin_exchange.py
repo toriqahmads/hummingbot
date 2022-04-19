@@ -691,8 +691,10 @@ class TestKucoinExchange(unittest.TestCase):
 
         self.assertTrue(
             self._is_logged(
-                "ERROR",
-                f"Failed to cancel order {order.client_order_id}"
+                "NETWORK",
+                f"Failed to cancel order {order.client_order_id}: Error executing request DELETE "
+                f"{CONSTANTS.BASE_PATH_URL['main']}/api/v1/orders/{order.exchange_order_id}. "
+                f"HTTP status is 400. Error: "
             )
         )
 

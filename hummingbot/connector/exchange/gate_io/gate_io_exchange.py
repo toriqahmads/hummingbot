@@ -11,23 +11,48 @@ from hummingbot.connector.exchange.gate_io.gate_io_api_user_stream_data_source i
 from hummingbot.connector.exchange.gate_io.gate_io_auth import GateIoAuth
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.core.data_type.in_flight_order import OrderState, OrderUpdate, TradeUpdate
-from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount, TradeFeeBase
-from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.utils.async_utils import safe_gather
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
+from hummingbot.connector.utils import get_new_client_order_id
+from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
+from hummingbot.core.clock import Clock
+from hummingbot.core.data_type.cancellation_result import CancellationResult
+from hummingbot.core.data_type.common import OpenOrder, OrderType, TradeType
+from hummingbot.core.data_type.limit_order import LimitOrder
+from hummingbot.core.data_type.order_book import OrderBook
+from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
+from hummingbot.core.event.events import (
+    BuyOrderCompletedEvent,
+    BuyOrderCreatedEvent,
+    MarketEvent,
+    MarketOrderFailureEvent,
+    OrderCancelledEvent,
+    OrderFilledEvent,
+    SellOrderCompletedEvent,
+    SellOrderCreatedEvent,
+)
+from hummingbot.core.network_iterator import NetworkStatus
+from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod
+from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
+from hummingbot.logger import HummingbotLogger
+
+ctce_logger = None
+s_decimal_NaN = Decimal("nan")
 
 
-class GateIoExchange(ExchangePyBase):
-    DEFAULT_DOMAIN = ""
+class GateIoExchange(ExchangeBase):
+    """
+    GateIoExchange connects with Gate.io exchange and provides order book pricing, user account tracking and
+    trading functionality.
+    """
+    ORDER_NOT_EXIST_CONFIRMATION_COUNT = 3
+    ORDER_NOT_EXIST_CANCEL_COUNT = 2
 
-    INTERVAL_TRADING_RULES = CONSTANTS.INTERVAL_TRADING_RULES
-    # Using 120 seconds here as Gate.io websocket is quiet
-    TICK_INTERVAL_LIMIT = 120.0
-
-    web_utils = web_utils
+    @classmethod
+    def logger(cls) -> HummingbotLogger:
+        global ctce_logger
+        if ctce_logger is None:
+            ctce_logger = logging.getLogger(__name__)
+        return ctce_logger
 
     def __init__(self,
                  gate_io_api_key: str,
@@ -46,6 +71,30 @@ class GateIoExchange(ExchangePyBase):
         self._domain = domain
         self._trading_required = trading_required
         self._trading_pairs = trading_pairs
+        self._gate_io_auth = GateIoAuth(gate_io_api_key, gate_io_secret_key)
+        self._throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS)
+        self._api_factory = build_gate_io_api_factory(throttler=self._throttler)
+        self._rest_assistant: Optional[RESTAssistant] = None
+        self._order_book_tracker = GateIoOrderBookTracker(
+            self._throttler, trading_pairs, self._api_factory
+        )
+        self._user_stream_tracker = GateIoUserStreamTracker(
+            self._gate_io_auth, trading_pairs, self._api_factory
+        )
+        self._ev_loop = asyncio.get_event_loop()
+        self._poll_notifier = asyncio.Event()
+        self._last_timestamp = 0
+        self._in_flight_orders = {}  # Dict[client_order_id:str, GateIoInFlightOrder]
+        self._order_not_found_records = {}  # Dict[client_order_id:str, count:int]
+        self._trading_rules = {}  # Dict[trading_pair:str, TradingRule]
+        self._status_polling_task = None
+        self._user_stream_event_listener_task = None
+        self._trading_rules_polling_task = None
+        self._last_poll_timestamp = 0
+        self._real_time_balance_update = False
+        self._update_balances_fetching = False
+        self._update_balances_queued = False
+        self._update_balances_finished = asyncio.Event()
 
         super().__init__()
 

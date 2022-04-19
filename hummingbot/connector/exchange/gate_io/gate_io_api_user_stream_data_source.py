@@ -4,15 +4,16 @@ import time
 from typing import List, Optional
 
 from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
-from hummingbot.connector.exchange.gate_io.gate_io_api_order_book_data_source import GateIoAPIOrderBookDataSource
 from hummingbot.connector.exchange.gate_io.gate_io_auth import GateIoAuth
-from hummingbot.connector.exchange.gate_io.gate_io_web_utils import APIError
-from hummingbot.connector.time_synchronizer import TimeSynchronizer
+from hummingbot.connector.exchange.gate_io.gate_io_utils import (
+    build_gate_io_api_factory,
+    convert_to_exchange_trading_pair,
+    GateIoAPIError,
+)
+from hummingbot.connector.exchange.gate_io.gate_io_websocket import GateIoWebsocket
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import WSRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
 
@@ -25,13 +26,18 @@ class GateIoAPIUserStreamDataSource(UserStreamTrackerDataSource):
             cls._logger = logging.getLogger(__name__)
         return cls._logger
 
-    def __init__(self,
-                 auth,
-                 trading_pairs: List[str],
-                 domain: str = "",
-                 api_factory: Optional[WebAssistantsFactory] = None,
-                 throttler: Optional[AsyncThrottler] = None,
-                 time_synchronizer: Optional[TimeSynchronizer] = None):
+    def __init__(
+        self,
+        gate_io_auth: GateIoAuth,
+        trading_pairs: Optional[List[str]] = None,
+        api_factory: Optional[WebAssistantsFactory] = None,
+    ):
+        self._api_factory = api_factory or build_gate_io_api_factory(throttler=AsyncThrottler(CONSTANTS.RATE_LIMITS))
+        self._gate_io_auth: GateIoAuth = gate_io_auth
+        self._ws: Optional[GateIoWebsocket] = None
+        self._trading_pairs = trading_pairs or []
+        self._current_listen_key = None
+        self._listen_for_user_stream_task = None
         super().__init__()
         self._api_factory = api_factory
         self._auth: GateIoAuth = auth

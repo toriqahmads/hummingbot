@@ -1,19 +1,22 @@
 import asyncio
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterable, Dict, List, Optional
 
-from hummingbot.connector.constants import s_decimal_NaN
+from async_timeout import timeout
+
+from hummingbot.connector.client_order_tracker import ClientOrderTracker
 from hummingbot.connector.exchange.binance import (
     binance_constants as CONSTANTS,
     binance_utils,
-    binance_web_utils as web_utils,
-)
+    binance_web_utils as web_utils)
 from hummingbot.connector.exchange.binance.binance_api_order_book_data_source import BinanceAPIOrderBookDataSource
 from hummingbot.connector.exchange.binance.binance_api_user_stream_data_source import BinanceAPIUserStreamDataSource
 from hummingbot.connector.exchange.binance.binance_auth import BinanceAuth
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.connector.utils import TradeFillOrderDetails
+from hummingbot.connector.utils import get_new_client_order_id, TradeFillOrderDetails
+from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
+from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
@@ -493,3 +496,44 @@ class BinanceExchange(ExchangePyBase):
         for asset_name in asset_names_to_remove:
             del self._account_available_balances[asset_name]
             del self._account_balances[asset_name]
+
+    async def _update_time_synchronizer(self):
+        try:
+            await self._binance_time_synchronizer.update_server_time_offset_with_time_provider(
+                time_provider=web_utils.get_current_server_time(
+                    throttler=self._throttler,
+                    domain=self._domain,
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.logger().exception("Error requesting time from Binance server")
+            raise
+
+    async def _api_request(self,
+                           method: RESTMethod,
+                           path_url: str,
+                           params: Optional[Dict[str, Any]] = None,
+                           data: Optional[Dict[str, Any]] = None,
+                           is_auth_required: bool = False) -> Dict[str, Any]:
+
+        rest_assistant = await self._get_rest_assistant()
+        if is_auth_required:
+            url = web_utils.private_rest_url(path_url, domain=self._domain)
+        else:
+            url = web_utils.public_rest_url(path_url, domain=self._domain)
+
+        return await rest_assistant.execute_request(
+            url=url,
+            params=params,
+            data=data,
+            method=method,
+            is_auth_required=is_auth_required,
+            throttler_limit_id=path_url,
+        )
+
+    async def _get_rest_assistant(self) -> RESTAssistant:
+        if self._rest_assistant is None:
+            self._rest_assistant = await self._api_factory.get_rest_assistant()
+        return self._rest_assistant

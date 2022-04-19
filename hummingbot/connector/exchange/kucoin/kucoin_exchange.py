@@ -15,8 +15,10 @@ from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import combine_to_hb_trading_pair
 from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.core.data_type.in_flight_order import OrderState, OrderUpdate, TradeUpdate
-from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
+from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate, TradeUpdate
+from hummingbot.core.data_type.limit_order import LimitOrder
+from hummingbot.core.data_type.order_book import OrderBook
+from hummingbot.core.data_type.order_book_tracker import OrderBookTracker
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.utils.async_utils import safe_gather
@@ -50,6 +52,40 @@ class KucoinExchange(ExchangePyBase):
             passphrase=self.kucoin_passphrase,
             secret_key=self.kucoin_secret_key,
             time_provider=self._time_synchronizer)
+        self._throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS)
+        self._api_factory = web_utils.build_api_factory(
+            throttler=self._throttler,
+            time_synchronizer=self._time_synchronizer,
+            domain=self._domain,
+            auth=self._auth)
+        self._last_poll_timestamp = 0
+        self._last_timestamp = 0
+        self._trading_pairs = trading_pairs
+        self._order_book_tracker = OrderBookTracker(
+            data_source=KucoinAPIOrderBookDataSource(
+                trading_pairs=trading_pairs,
+                domain=self._domain,
+                api_factory=self._api_factory,
+                throttler=self._throttler,
+                time_synchronizer=self._time_synchronizer),
+            trading_pairs=trading_pairs,
+            domain=self._domain)
+        self._user_stream_tracker = UserStreamTracker(
+            data_source=KucoinAPIUserStreamDataSource(
+                auth=self._auth,
+                domain=self._domain,
+                api_factory=self._api_factory,
+                throttler=self._throttler))
+        self._poll_notifier = asyncio.Event()
+        self._status_polling_task = None
+        self._user_stream_tracker_task = None
+        self._user_stream_event_listener_task = None
+        self._trading_rules_polling_task = None
+        self._trading_fees_polling_task = None
+        self._trading_required = trading_required
+        self._trading_rules = {}
+        self._trading_fees = {}
+        self._order_tracker: ClientOrderTracker = ClientOrderTracker(connector=self)
 
     @property
     def name(self) -> str:
@@ -307,18 +343,103 @@ class KucoinExchange(ExchangePyBase):
                     self.logger().error(f"Error parsing the trading pair rule {info}. Skipping.", exc_info=True)
         return trading_rules
 
-    async def _update_trading_fees(self):
-        trading_symbols = [await self._orderbook_ds.exchange_symbol_associated_to_pair(
-            trading_pair=trading_pair,
-            domain=self._domain,
-            api_factory=self._web_assistants_factory,
-            throttler=self._throttler,
-            time_synchronizer=self._time_synchronizer) for trading_pair in self._trading_pairs]
-        params = {"symbols": ",".join(trading_symbols)}
-        resp = await self._api_get(
-            path_url=CONSTANTS.FEE_PATH_URL,
+    async def _update_order_status(self):
+        # The poll interval for order status is 10 seconds.
+        last_tick = int(self._last_poll_timestamp / self.UPDATE_ORDERS_INTERVAL)
+        current_tick = int(self.current_timestamp / self.UPDATE_ORDERS_INTERVAL)
+
+        tracked_orders = list(self.in_flight_orders.values())
+        if current_tick > last_tick and len(tracked_orders) > 0:
+            reviewed_orders = []
+            request_tasks = []
+
+            for tracked_order in tracked_orders:
+                try:
+                    exchange_order_id = await tracked_order.get_exchange_order_id()
+                except asyncio.TimeoutError:
+                    self.logger().debug(
+                        f"Tracked order {tracked_order.client_order_id} does not have an exchange id. "
+                        f"Attempting fetch in next polling interval."
+                    )
+                    await self._order_tracker.process_order_not_found(tracked_order.client_order_id)
+                    continue
+                reviewed_orders.append(tracked_order)
+                request_tasks.append(asyncio.get_event_loop().create_task(self._api_request(
+                    path_url=f"{CONSTANTS.ORDERS_PATH_URL}/{exchange_order_id}",
+                    method=RESTMethod.GET,
+                    is_auth_required=True,
+                    limit_id=CONSTANTS.GET_ORDER_LIMIT_ID)))
+
+            self.logger().debug(f"Polling for order status updates of {len(reviewed_orders)} orders.")
+            results = await safe_gather(*request_tasks, return_exceptions=True)
+
+            for update_result, tracked_order in zip(results, reviewed_orders):
+                client_order_id = tracked_order.client_order_id
+
+                # If the order has already been cancelled or has failed do nothing
+                if client_order_id in self.in_flight_orders:
+                    if isinstance(update_result, Exception):
+                        self.logger().network(
+                            f"Error fetching status update for the order {client_order_id}: {update_result}.",
+                            app_warning_msg=f"Failed to fetch status update for the order {client_order_id}."
+                        )
+                        # Wait until the order not found error have repeated a few times before actually treating
+                        # it as failed. See: https://github.com/CoinAlpha/hummingbot/issues/601
+                        await self._order_tracker.process_order_not_found(client_order_id)
+
+                    else:
+                        # Update order execution status
+                        ordered_canceled = update_result["data"]["cancelExist"]
+                        is_active = update_result["data"]["isActive"]
+                        op_type = update_result["data"]["opType"]
+
+                        new_state = tracked_order.current_state
+                        if ordered_canceled or op_type == "CANCEL":
+                            new_state = OrderState.CANCELLED
+                        elif not is_active:
+                            new_state = OrderState.FILLED
+
+                        update = OrderUpdate(
+                            client_order_id=client_order_id,
+                            exchange_order_id=update_result["data"]["id"],
+                            trading_pair=tracked_order.trading_pair,
+                            update_timestamp=self.current_timestamp,
+                            new_state=new_state,
+                        )
+                        self._order_tracker.process_order_update(update)
+
+    async def _update_time_synchronizer(self):
+        try:
+            await self._time_synchronizer.update_server_time_offset_with_time_provider(
+                time_provider=web_utils.get_current_server_time(
+                    throttler=self._throttler,
+                    domain=self._domain,
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.logger().exception("Error requesting time from Kucoin server")
+            raise
+
+    async def _api_request(self,
+                           path_url,
+                           method: RESTMethod = RESTMethod.GET,
+                           params: Optional[Dict[str, Any]] = None,
+                           data: Optional[Dict[str, Any]] = None,
+                           is_auth_required: bool = False,
+                           limit_id: Optional[str] = None) -> Dict[str, Any]:
+
+        rest_assistant = await self._api_factory.get_rest_assistant()
+        url = web_utils.rest_url(path_url, domain=self._domain)
+
+        return await rest_assistant.execute_request(
+            url=url,
             params=params,
-            is_auth_required=True,
+            data=data,
+            method=method,
+            is_auth_required=is_auth_required,
+            throttler_limit_id=limit_id if limit_id else path_url,
         )
         fees_json = resp["data"]
         for fee_json in fees_json:

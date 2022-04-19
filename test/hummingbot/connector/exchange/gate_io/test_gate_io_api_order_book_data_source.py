@@ -15,6 +15,7 @@ from hummingbot.connector.exchange.gate_io.gate_io_api_order_book_data_source im
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.order_book import OrderBook, OrderBookMessage
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
+from test.hummingbot.connector.network_mocking_assistant import NetworkMockingAssistant
 
 
 class TestGateIoAPIOrderBookDataSource(unittest.TestCase):
@@ -37,7 +38,7 @@ class TestGateIoAPIOrderBookDataSource(unittest.TestCase):
 
         self.mocking_assistant = NetworkMockingAssistant()
         self.throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS)
-        api_factory = WebAssistantsFactory()
+        api_factory = WebAssistantsFactory(throttler=self.throttler)
         self.data_source = GateIoAPIOrderBookDataSource(
             [self.trading_pair],
             throttler=self.throttler,
