@@ -508,7 +508,7 @@ class GatewayEVMAMM(ConnectorBase):
                 price,
                 **request_args
             )
-            transaction_hash: str = order_result.get("txHash")
+            transaction_hash: Optional[str] = order_result.get("txHash")
             if transaction_hash is not None:
                 gas_cost: Decimal = Decimal(order_result.get("gasCost"))
                 gas_price_token: str = order_result.get("gasPriceToken")
@@ -519,7 +519,7 @@ class GatewayEVMAMM(ConnectorBase):
                     exchange_order_id=transaction_hash,
                     trading_pair=trading_pair,
                     update_timestamp=self.current_timestamp,
-                    new_state=OrderState.OPEN,
+                    new_state=OrderState.OPEN,  # Assume that the transaction has been successfully mined.
                     misc_updates={
                         "nonce": order_result.get("nonce"),
                         "gas_price": Decimal(order_result.get("gasPrice")),
@@ -714,50 +714,51 @@ class GatewayEVMAMM(ConnectorBase):
             )
             for tx_hash in tx_hash_list
         ], return_exceptions=True)
-        for tracked_order, update_result in zip(tracked_orders, update_results):
-            if isinstance(update_result, Exception):
+        for tracked_order, tx_details in zip(tracked_orders, update_results):
+            if isinstance(tx_details, Exception):
                 self.logger().error(f"An error occurred fetching transaction status of {tracked_order.client_order_id}")
                 continue
-            if "txHash" not in update_result:
+            if "txHash" not in tx_details:
                 self.logger().error(f"No txHash field for transaction status of {tracked_order.client_order_id}: "
-                                    f"{update_result}.")
+                                    f"{tx_details}.")
                 continue
-            if update_result["txStatus"] == 1:
-                if update_result["txReceipt"]["status"] == 1:
-                    gas_used: int = update_result["txReceipt"]["gasUsed"]
-                    gas_price: Decimal = tracked_order.gas_price
-                    fee: Decimal = Decimal(str(gas_used)) * Decimal(str(gas_price)) / Decimal(str(1e9))
+            tx_status: int = tx_details["txStatus"]
+            tx_receipt: Optional[Dict[str, Any]] = tx_details["txReceipt"]
+            if tx_status == 1 and (tx_receipt is not None and tx_receipt.get("status") == 1):
+                gas_used: int = tx_receipt["gasUsed"]
+                gas_price: Decimal = tracked_order.gas_price
+                fee: Decimal = Decimal(str(gas_used)) * Decimal(str(gas_price)) / Decimal(str(1e9))
 
-                    trade_fee: TradeFeeBase = AddedToCostTradeFee(
-                        flat_fees=[TokenAmount(tracked_order.fee_asset, Decimal(str(fee)))]
-                    )
-                    trade_update: TradeUpdate = TradeUpdate(
-                        trade_id=tracked_order.exchange_order_id,
-                        client_order_id=tracked_order.client_order_id,
-                        exchange_order_id=tracked_order.exchange_order_id,
-                        trading_pair=tracked_order.trading_pair,
-                        fill_timestamp=self.current_timestamp,
-                        fill_price=tracked_order.price,
-                        fill_base_amount=tracked_order.amount,
-                        fill_quote_amount=tracked_order.amount * tracked_order.price,
-                        fee=trade_fee
-                    )
+                trade_fee: TradeFeeBase = AddedToCostTradeFee(
+                    flat_fees=[TokenAmount(tracked_order.fee_asset, Decimal(str(fee)))]
+                )
+                trade_update: TradeUpdate = TradeUpdate(
+                    trade_id=tracked_order.exchange_order_id,
+                    client_order_id=tracked_order.client_order_id,
+                    exchange_order_id=tracked_order.exchange_order_id,
+                    trading_pair=tracked_order.trading_pair,
+                    fill_timestamp=self.current_timestamp,
+                    fill_price=tracked_order.price,
+                    fill_base_amount=tracked_order.amount,
+                    fill_quote_amount=tracked_order.amount * tracked_order.price,
+                    fee=trade_fee
+                )
 
-                    self._order_tracker.process_trade_update(trade_update)
+                self._order_tracker.process_trade_update(trade_update)
 
-                    order_update: OrderUpdate = OrderUpdate(
-                        client_order_id=tracked_order.client_order_id,
-                        new_state=OrderState.FILLED,
-                    )
-                    self._order_tracker.process_order_update(order_update)
-                else:
-                    self.logger().info(
-                        f"The order {tracked_order.client_order_id} has failed according to order status API. ")
-                    order_update: OrderUpdate = OrderUpdate(
-                        client_order_id=tracked_order.client_order_id,
-                        new_state=OrderState.FAILED,
-                    )
-                    self._order_tracker.process_order_update(order_update)
+                order_update: OrderUpdate = OrderUpdate(
+                    client_order_id=tracked_order.client_order_id,
+                    trading_pair=tracked_order.trading_pair,
+                    update_timestamp=self.current_timestamp,
+                    new_state=OrderState.FILLED,
+                )
+                self._order_tracker.process_order_update(order_update)
+            elif tx_status in [-1, 2, 3, 0] or (tx_receipt is not None and tx_receipt.get("status") == 0):
+                self.logger().network(
+                    f"Error fetching transaction status for the order {tracked_order.client_order_id}: {tx_details}.",
+                    app_warning_msg=f"Failed to fetch transaction status for the order {tracked_order.client_order_id}."
+                )
+                await self._order_tracker.process_order_not_found(tracked_order.client_order_id)
 
     def get_taker_order_type(self):
         return OrderType.LIMIT
