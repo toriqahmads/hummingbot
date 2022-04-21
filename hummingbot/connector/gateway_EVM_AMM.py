@@ -298,7 +298,6 @@ class GatewayEVMAMM(ConnectorBase):
         if "hash" in resp.get("approval", {}).keys():
             approval_hash = resp["approval"]["hash"]
             tracked_order = self._order_tracker.fetch_order(client_order_id=approval_id)
-            tracked_order.current_state = OrderState.APPROVED
             tracked_order.update_exchange_order_id(approval_hash)
             tracked_order.nonce = resp["nonce"]
             self.logger().info(
@@ -614,6 +613,7 @@ class GatewayEVMAMM(ConnectorBase):
                 if transaction_status["txReceipt"]["status"] == 1:
                     self.logger().info(f"Token approval for {tracked_approval.client_order_id} on {self.connector_name} "
                                        f"successful.")
+                    tracked_approval.current_state = OrderState.APPROVED
                     self.trigger_event(
                         TokenApprovalEvent.ApprovalSuccessful,
                         TokenApprovalSuccessEvent(
@@ -627,6 +627,7 @@ class GatewayEVMAMM(ConnectorBase):
                     self.logger().warning(
                         f"Token approval for {tracked_approval.client_order_id} on {self.connector_name} failed."
                     )
+                    tracked_approval.current_state = OrderState.FAILED
                     self.trigger_event(
                         TokenApprovalEvent.ApprovalFailed,
                         TokenApprovalFailureEvent(
