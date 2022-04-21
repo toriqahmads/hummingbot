@@ -57,7 +57,7 @@ class KucoinAPIUserStreamDataSource(UserStreamTrackerDataSource):
         await ws.connect(ws_url=f"{ws_url}?token={token}", message_timeout=self._ping_interval)
         return ws
 
-    async def _subscribe_channels(self, ws: WSAssistant):
+    async def _subscribe_channels(self, websocket_assistant: WSAssistant):
         """
         Subscribes to order events and balance events.
 
