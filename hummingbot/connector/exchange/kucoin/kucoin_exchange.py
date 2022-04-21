@@ -112,8 +112,79 @@ class KucoinExchange(ExchangePyBase):
         return CONSTANTS.SYMBOLS_PATH_URL
 
     @property
-    def check_network_request_path(self):
-        return CONSTANTS.SERVER_TIME_PATH_URL
+    def ready(self) -> bool:
+        current_status = self.status_dict
+        return all(current_status.values())
+
+    def restore_tracking_states(self, saved_states: Dict[str, Any]):
+        """
+        Restore in-flight orders from saved tracking states, this is st the connector can pick up on where it left off
+        when it disconnects.
+
+        :param saved_states: The saved tracking_states.
+        """
+        self._order_tracker.restore_tracking_states(tracking_states=saved_states)
+
+    async def start_network(self):
+        self._stop_network()
+        self._order_book_tracker.start()
+        self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
+        self._trading_fees_polling_task = safe_ensure_future(self._trading_fees_polling_loop())
+        if self._trading_required:
+            self._status_polling_task = safe_ensure_future(self._status_polling_loop())
+            self._user_stream_tracker_task = safe_ensure_future(self._user_stream_tracker.start())
+            self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
+            await self._update_balances()
+
+    def _stop_network(self):
+        # Resets timestamps and events for status_polling_loop
+        self._last_poll_timestamp = 0
+        self._last_timestamp = 0
+        self._poll_notifier = asyncio.Event()
+
+        self._order_book_tracker.stop()
+        if self._status_polling_task is not None:
+            self._status_polling_task.cancel()
+            self._status_polling_task = None
+        if self._trading_rules_polling_task is not None:
+            self._trading_rules_polling_task.cancel()
+            self._trading_rules_polling_task = None
+        if self._trading_fees_polling_task is not None:
+            self._trading_fees_polling_task.cancel()
+            self._trading_fees_polling_task = None
+        if self._user_stream_tracker_task is not None:
+            self._user_stream_tracker_task.cancel()
+            self._user_stream_tracker_task = None
+        if self._user_stream_event_listener_task is not None:
+            self._user_stream_event_listener_task.cancel()
+            self._user_stream_event_listener_task = None
+
+    async def stop_network(self):
+        self._stop_network()
+
+    async def check_network(self) -> NetworkStatus:
+        try:
+            await self._api_request(path_url=CONSTANTS.SERVER_TIME_PATH_URL, method=RESTMethod.GET)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return NetworkStatus.NOT_CONNECTED
+        return NetworkStatus.CONNECTED
+
+    def tick(self, timestamp: float):
+        """
+        Includes the logic that has to be processed every time a new tick happens in the bot. Particularly it enables
+        the execution of the status update polling loop using an event.
+        """
+        poll_interval = (self.SHORT_POLL_INTERVAL
+                         if timestamp - self._user_stream_tracker.last_recv_time > 60.0
+                         else self.LONG_POLL_INTERVAL)
+        last_tick = int(self._last_timestamp / poll_interval)
+        current_tick = int(timestamp / poll_interval)
+
+        if current_tick > last_tick:
+            self._poll_notifier.set()
+        self._last_timestamp = timestamp
 
     def supported_order_types(self):
         return [OrderType.MARKET, OrderType.LIMIT, OrderType.LIMIT_MAKER]
