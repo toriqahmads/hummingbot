@@ -4,10 +4,10 @@ import time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from hummingbot.connector.constants import s_decimal_NaN
-from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS, gate_io_web_utils as web_utils
+from async_timeout import timeout
+
+from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
 from hummingbot.connector.exchange.gate_io.gate_io_api_order_book_data_source import GateIoAPIOrderBookDataSource
-from hummingbot.connector.exchange.gate_io.gate_io_api_user_stream_data_source import GateIoAPIUserStreamDataSource
 from hummingbot.connector.exchange.gate_io.gate_io_auth import GateIoAuth
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
@@ -75,9 +75,9 @@ class GateIoExchange(ExchangeBase):
         self._throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS)
         self._api_factory = build_gate_io_api_factory(throttler=self._throttler)
         self._rest_assistant: Optional[RESTAssistant] = None
-        self._order_book_tracker = GateIoOrderBookTracker(
+        self._set_order_book_tracker(GateIoOrderBookTracker(
             self._throttler, trading_pairs, self._api_factory
-        )
+        ))
         self._user_stream_tracker = GateIoUserStreamTracker(
             self._gate_io_auth, trading_pairs, self._api_factory
         )
@@ -99,11 +99,8 @@ class GateIoExchange(ExchangeBase):
         super().__init__()
 
     @property
-    def authenticator(self):
-        return GateIoAuth(
-            api_key=self._gate_io_api_key,
-            secret_key=self._gate_io_secret_key,
-            time_provider=self._time_synchronizer)
+    def order_books(self) -> Dict[str, OrderBook]:
+        return self.order_book_tracker.order_books
 
     @property
     def name(self) -> str:
@@ -114,8 +111,17 @@ class GateIoExchange(ExchangeBase):
         return CONSTANTS.RATE_LIMITS
 
     @property
-    def domain(self):
-        return self.DEFAULT_DOMAIN
+    def status_dict(self) -> Dict[str, bool]:
+        """
+        A dictionary of statuses of various connector's components.
+        """
+        return {
+            "order_books_initialized": self.order_book_tracker.ready,
+            "account_balance": len(self._account_balances) > 0 if self._trading_required else True,
+            "trading_rule_initialized": len(self._trading_rules) > 0,
+            "user_stream_initialized":
+                self._user_stream_tracker.data_source.last_recv_time > 0 if self._trading_required else True,
+        }
 
     @property
     def client_order_id_max_length(self):
@@ -136,30 +142,103 @@ class GateIoExchange(ExchangeBase):
     def supported_order_types(self):
         return [OrderType.LIMIT]
 
-    def _create_web_assistants_factory(self) -> WebAssistantsFactory:
-        return web_utils.build_api_factory(
-            throttler=self._throttler,
-            time_synchronizer=self._time_synchronizer,
-            domain=self.domain,
-            auth=self._auth)
+    def get_taker_order_type(self):
+        return OrderType.LIMIT
 
-    def _create_order_book_data_source(self) -> OrderBookTrackerDataSource:
-        return GateIoAPIOrderBookDataSource(
-            trading_pairs=self._trading_pairs,
-            domain=self.domain,
-            api_factory=self._web_assistants_factory,
-            throttler=self._throttler,
-            time_synchronizer=self._time_synchronizer,
-        )
+    def start(self, clock: Clock, timestamp: float):
+        """
+        This function is called automatically by the clock.
+        """
+        super().start(clock, timestamp)
 
-    def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
-        return GateIoAPIUserStreamDataSource(
-            auth=self._auth,
-            trading_pairs=self._trading_pairs,
-            domain=self.DEFAULT_DOMAIN,
-            api_factory=self._web_assistants_factory,
-            throttler=self._throttler,
-            time_synchronizer=self._time_synchronizer,
+    def stop(self, clock: Clock):
+        """
+        This function is called automatically by the clock.
+        """
+        super().stop(clock)
+
+    async def start_network(self):
+        """
+        This function is required by NetworkIterator base class and is called automatically.
+        It starts tracking order book, polling trading rules,
+        updating statuses and tracking user data.
+        """
+        self.order_book_tracker.start()
+        self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
+        if self._trading_required:
+            self._status_polling_task = safe_ensure_future(self._status_polling_loop())
+            self._user_stream_tracker_task = safe_ensure_future(self._user_stream_tracker.start())
+            self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
+
+    async def stop_network(self):
+        """
+        This function is required by NetworkIterator base class and is called automatically.
+        """
+        # Resets timestamps for status_polling_task
+        self._last_poll_timestamp = 0
+        self._last_timestamp = 0
+        self._poll_notifier = asyncio.Event()
+        # Reset balance queue
+        self._update_balances_fetching = False
+        self._update_balances_queued = False
+        self._update_balances_finished = asyncio.Event()
+
+        self.order_book_tracker.stop()
+        if self._status_polling_task is not None:
+            self._status_polling_task.cancel()
+            self._status_polling_task = None
+        if self._trading_rules_polling_task is not None:
+            self._trading_rules_polling_task.cancel()
+            self._trading_rules_polling_task = None
+        if self._status_polling_task is not None:
+            self._status_polling_task.cancel()
+            self._status_polling_task = None
+        if self._user_stream_tracker_task is not None:
+            self._user_stream_tracker_task.cancel()
+            self._user_stream_tracker_task = None
+        if self._user_stream_event_listener_task is not None:
+            self._user_stream_event_listener_task.cancel()
+            self._user_stream_event_listener_task = None
+
+    async def check_network(self) -> NetworkStatus:
+        """
+        This function is required by NetworkIterator base class and is called periodically to check
+        the network connection. Simply ping the network (or call any light weight public API).
+        """
+        try:
+            # since there is no ping endpoint, the lowest rate call is to get BTC-USD symbol
+            endpoint = CONSTANTS.NETWORK_CHECK_PATH_URL
+            request = GateIORESTRequest(
+                method=RESTMethod.GET, endpoint=endpoint, throttler_limit_id=endpoint
+            )
+            await self._api_request(request)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return NetworkStatus.NOT_CONNECTED
+        return NetworkStatus.CONNECTED
+
+    async def _trading_rules_polling_loop(self):
+        """
+        Periodically update trading rule.
+        """
+        while True:
+            try:
+                await self._update_trading_rules()
+                await asyncio.sleep(CONSTANTS.INTERVAL_TRADING_RULES)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger().network(f"Unexpected error while fetching trading rules. Error: {str(e)}",
+                                      exc_info=True,
+                                      app_warning_msg=("Could not fetch new trading rules from "
+                                                       f"{CONSTANTS.EXCHANGE_NAME}. Check network connection."))
+                await asyncio.sleep(0.5)
+
+    async def _update_trading_rules(self):
+        endpoint = CONSTANTS.SYMBOL_PATH_URL
+        request = GateIORESTRequest(
+            method=RESTMethod.GET, endpoint=endpoint, throttler_limit_id=endpoint
         )
 
     async def _format_trading_rules(self, raw_trading_pair_info: Dict[str, Any]) -> Dict[str, TradingRule]:
@@ -199,34 +278,68 @@ class GateIoExchange(ExchangeBase):
                     f"Error parsing the trading pair rule {rule}. Skipping.", exc_info=True)
         return result
 
-    async def _place_order(self,
-                           order_id: str,
-                           trading_pair: str,
-                           amount: Decimal,
-                           trade_type: TradeType,
-                           order_type: OrderType,
-                           price: Decimal) -> Tuple[str, float]:
+    async def _api_request(self, request: GateIORESTRequest) -> Dict[str, Any]:
+        rest_assistant: RESTAssistant = await self._get_rest_assistant()
+        response = await api_call_with_retries(
+            request, rest_assistant, self._throttler, self.logger(), self._gate_io_auth
+        )
+        return response
 
-        order_type_str = order_type.name.lower().split("_")[0]
-        symbol = await self._orderbook_ds.exchange_symbol_associated_to_pair(trading_pair)
+    def get_order_price_quantum(self, trading_pair: str, price: Decimal):
+        """
+        Returns a price step, a minimum price increment for a given trading pair.
+        """
+        trading_rule = self._trading_rules[trading_pair]
+        return trading_rule.min_price_increment
 
-        data = {
-            "text": order_id,
-            "currency_pair": symbol,
-            "side": trade_type.name.lower(),
-            "type": order_type_str,
-            "price": f"{price:f}",
-            "amount": f"{amount:f}",
-        }
-        # RESTRequest does not support json, and if we pass a dict
-        # the underlying aiohttp will encode it to params
-        data = json.dumps(data)
-        endpoint = CONSTANTS.ORDER_CREATE_PATH_URL
-        order_result = await self._api_post(
-            path_url=endpoint,
-            data=data,
-            is_auth_required=True,
-            limit_id=endpoint,
+    def get_order_size_quantum(self, trading_pair: str, order_size: Decimal):
+        """
+        Returns an order amount step, a minimum amount increment for a given trading pair.
+        """
+        trading_rule = self._trading_rules[trading_pair]
+        return Decimal(trading_rule.min_base_amount_increment)
+
+    def get_order_book(self, trading_pair: str) -> OrderBook:
+        if trading_pair not in self.order_book_tracker.order_books:
+            raise ValueError(f"No order book exists for '{trading_pair}'.")
+        return self.order_book_tracker.order_books[trading_pair]
+
+    def buy(self, trading_pair: str, amount: Decimal, order_type=OrderType.LIMIT,
+            price: Decimal = s_decimal_NaN, **kwargs) -> str:
+        """
+        Buys an amount of base asset (of the given trading pair). This function returns immediately.
+        To see an actual order, you'll have to wait for BuyOrderCreatedEvent.
+        :param trading_pair: The market (e.g. BTC-USDT) to buy from
+        :param amount: The amount in base token value
+        :param order_type: The order type
+        :param price: The price (note: this is no longer optional)
+        :returns A new internal order id
+        """
+        order_id = get_new_client_order_id(
+            is_buy=True,
+            trading_pair=trading_pair,
+            hbot_order_id_prefix=CONSTANTS.HBOT_ORDER_ID,
+            max_id_len=CONSTANTS.MAX_ID_LEN,
+        )
+        safe_ensure_future(self._create_order(TradeType.BUY, order_id, trading_pair, amount, order_type, price))
+        return order_id
+
+    def sell(self, trading_pair: str, amount: Decimal, order_type=OrderType.LIMIT,
+             price: Decimal = s_decimal_NaN, **kwargs) -> str:
+        """
+        Sells an amount of base asset (of the given trading pair). This function returns immediately.
+        To see an actual order, you'll have to wait for SellOrderCreatedEvent.
+        :param trading_pair: The market (e.g. BTC-USDT) to sell from
+        :param amount: The amount in base token value
+        :param order_type: The order type
+        :param price: The price (note: this is no longer optional)
+        :returns A new internal order id
+        """
+        order_id = get_new_client_order_id(
+            is_buy=False,
+            trading_pair=trading_pair,
+            hbot_order_id_prefix=CONSTANTS.HBOT_ORDER_ID,
+            max_id_len=CONSTANTS.MAX_ID_LEN,
         )
         if order_result.get("status") in {"cancelled"}:
             raise web_utils.APIError({"label": "ORDER_REJECTED", "message": "Order rejected."})
@@ -500,3 +613,153 @@ class GateIoExchange(ExchangeBase):
             asset_name = account["currency"]
             self._account_available_balances[asset_name] = Decimal(str(account["available"]))
             self._account_balances[asset_name] = Decimal(str(account["total"]))
+
+        self._in_flight_orders_snapshot = {k: copy.copy(v) for k, v in self._in_flight_orders.items()}
+        self._in_flight_orders_snapshot_timestamp = self.current_timestamp
+
+    async def cancel_all(self, timeout_seconds: float) -> List[CancellationResult]:
+        """
+        Cancels all in-flight orders and waits for cancellation results.
+        Used by bot's top level stop and exit commands (cancelling outstanding orders on exit)
+        :param timeout_seconds: The timeout at which the operation will be canceled.
+        :returns List of CancellationResult which indicates whether each order is successfully cancelled.
+        """
+        if self._trading_pairs is None:
+            raise Exception("cancel_all can only be used when trading_pairs are specified.")
+        open_orders = [o for o in self._in_flight_orders.values() if not o.is_done]
+        if len(open_orders) == 0:
+            return []
+        tasks = [self._execute_cancel(o.trading_pair, o.client_order_id) for o in open_orders]
+        cancellation_results = []
+        cancel_timeout = timeout_seconds * len(open_orders) if len(open_orders) else timeout_seconds
+        try:
+            async with timeout(cancel_timeout):
+                cancellation_results = await safe_gather(*tasks, return_exceptions=False)
+        except Exception:
+            self.logger().network(
+                "Unexpected error cancelling orders.", exc_info=True,
+                app_warning_msg=(f"Failed to cancel all orders on {CONSTANTS.EXCHANGE_NAME}. "
+                                 "Check API key and network connection.")
+            )
+        return cancellation_results
+
+    def tick(self, timestamp: float):
+        """
+        Is called automatically by the clock for each clock's tick (1 second by default).
+        It checks if status polling task is due for execution.
+        """
+        now = time.time()
+        # Using 120 seconds here as Gate.io websocket is quiet
+        poll_interval = (CONSTANTS.SHORT_POLL_INTERVAL
+                         if now - self._user_stream_tracker.last_recv_time > 120.0
+                         else CONSTANTS.LONG_POLL_INTERVAL)
+        last_tick = int(self._last_timestamp / poll_interval)
+        current_tick = int(timestamp / poll_interval)
+        if current_tick > last_tick:
+            if not self._poll_notifier.is_set():
+                self._poll_notifier.set()
+        self._last_timestamp = timestamp
+
+    def get_fee(self,
+                base_currency: str,
+                quote_currency: str,
+                order_type: OrderType,
+                order_side: TradeType,
+                amount: Decimal,
+                price: Decimal = s_decimal_NaN,
+                is_maker: Optional[bool] = None) -> AddedToCostTradeFee:
+        """
+        To get trading fee, this function is simplified by using fee override configuration. Most parameters to this
+        function are ignore except order_type. Use OrderType.LIMIT_MAKER to specify you want trading fee for
+        maker order.
+        """
+        is_maker = order_type is OrderType.LIMIT_MAKER
+        return AddedToCostTradeFee(percent=self.estimate_fee_pct(is_maker))
+
+    async def _iter_user_event_queue(self) -> AsyncIterable[Dict[str, any]]:
+        while True:
+            try:
+                yield await self._user_stream_tracker.user_stream.get()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().network(
+                    "Unknown error. Retrying after 1 seconds.", exc_info=True,
+                    app_warning_msg=(f"Could not fetch user events from {CONSTANTS.EXCHANGE_NAME}. "
+                                     "Check API key and network connection."))
+                await asyncio.sleep(1.0)
+
+    async def _user_stream_event_listener(self):
+        """
+        Listens to message in _user_stream_tracker.user_stream queue. The messages are put in by
+        GateIoAPIUserStreamDataSource.
+        """
+        async for event_message in self._iter_user_event_queue():
+            try:
+                user_channels = [
+                    CONSTANTS.USER_TRADES_ENDPOINT_NAME,
+                    CONSTANTS.USER_ORDERS_ENDPOINT_NAME,
+                    CONSTANTS.USER_BALANCE_ENDPOINT_NAME,
+                ]
+
+                channel: str = event_message.get("channel", None)
+                results: str = event_message.get("result", None)
+
+                if channel not in user_channels:
+                    self.logger().error(f"Unexpected message in user stream: {event_message}.", exc_info=True)
+                    continue
+                if channel == CONSTANTS.USER_TRADES_ENDPOINT_NAME:
+                    for trade_msg in results:
+                        self._process_trade_message(trade_msg)
+                elif channel == CONSTANTS.USER_ORDERS_ENDPOINT_NAME:
+                    for order_msg in results:
+                        self._process_order_message(order_msg)
+                elif channel == CONSTANTS.USER_BALANCE_ENDPOINT_NAME:
+                    self._process_balance_message_ws(results)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().error("Unexpected error in user stream listener loop.", exc_info=True)
+                await asyncio.sleep(5.0)
+
+    # This is currently unused, but looks like a future addition.
+    async def get_open_orders(self) -> List[OpenOrder]:
+        endpoint = CONSTANTS.USER_ORDERS_PATH_URL
+        request = GateIORESTRequest(
+            method=RESTMethod.GET,
+            endpoint=endpoint,
+            is_auth_required=True,
+            throttler_limit_id=endpoint,
+        )
+        result = await self._api_request(request)
+        ret_val = []
+        for pair_orders in result:
+            for order in pair_orders["orders"]:
+                if CONSTANTS.HBOT_ORDER_ID not in order["text"]:
+                    continue
+                if order["type"] != OrderType.LIMIT.name.lower():
+                    self.logger().info(f"Unsupported order type found: {order['type']}")
+                    continue
+                ret_val.append(
+                    OpenOrder(
+                        client_order_id=order["text"],
+                        trading_pair=convert_from_exchange_trading_pair(order["currency_pair"]),
+                        price=Decimal(str(order["price"])),
+                        amount=Decimal(str(order["amount"])),
+                        executed_amount=Decimal(str(order["filled_total"])),
+                        status=order["status"],
+                        order_type=OrderType.LIMIT,
+                        is_buy=True if order["side"].lower() == TradeType.BUY.name.lower() else False,
+                        time=int(order["create_time"]),
+                        exchange_order_id=order["id"]
+                    )
+                )
+        return ret_val
+
+    async def all_trading_pairs(self) -> List[str]:
+        # This method should be removed and instead we should implement _initialize_trading_pair_symbol_map
+        return await GateIoAPIOrderBookDataSource.fetch_trading_pairs()
+
+    async def get_last_traded_prices(self, trading_pairs: List[str]) -> Dict[str, float]:
+        # This method should be removed and instead we should implement _get_last_traded_price
+        return await GateIoAPIOrderBookDataSource.get_last_traded_prices(trading_pairs=trading_pairs)

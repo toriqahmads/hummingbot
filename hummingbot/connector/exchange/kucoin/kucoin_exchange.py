@@ -2,7 +2,10 @@ import asyncio
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from hummingbot.connector.constants import s_decimal_NaN
+from async_timeout import timeout
+from bidict import bidict
+
+from hummingbot.connector.client_order_tracker import ClientOrderTracker
 from hummingbot.connector.exchange.kucoin import (
     kucoin_constants as CONSTANTS,
     kucoin_utils as utils,
@@ -61,21 +64,18 @@ class KucoinExchange(ExchangePyBase):
         self._last_poll_timestamp = 0
         self._last_timestamp = 0
         self._trading_pairs = trading_pairs
-        self._order_book_tracker = OrderBookTracker(
+        self._set_order_book_tracker(OrderBookTracker(
             data_source=KucoinAPIOrderBookDataSource(
                 trading_pairs=trading_pairs,
+                connector=self,
                 domain=self._domain,
-                api_factory=self._api_factory,
-                throttler=self._throttler,
-                time_synchronizer=self._time_synchronizer),
+                api_factory=self._api_factory,),
             trading_pairs=trading_pairs,
-            domain=self._domain)
+            domain=self._domain))
         self._user_stream_tracker = UserStreamTracker(
             data_source=KucoinAPIUserStreamDataSource(
-                auth=self._auth,
                 domain=self._domain,
-                api_factory=self._api_factory,
-                throttler=self._throttler))
+                api_factory=self._api_factory))
         self._poll_notifier = asyncio.Event()
         self._status_polling_task = None
         self._user_stream_tracker_task = None
@@ -92,8 +92,8 @@ class KucoinExchange(ExchangePyBase):
         return "kucoin"
 
     @property
-    def rate_limits_rules(self):
-        return CONSTANTS.RATE_LIMITS
+    def order_books(self) -> Dict[str, OrderBook]:
+        return self.order_book_tracker.order_books
 
     @property
     def domain(self):
@@ -108,8 +108,15 @@ class KucoinExchange(ExchangePyBase):
         return ""
 
     @property
-    def trading_rules_request_path(self):
-        return CONSTANTS.SYMBOLS_PATH_URL
+    def status_dict(self) -> Dict[str, bool]:
+        return {
+            "symbols_mapping_initialized": self.trading_pair_symbol_map_ready(),
+            "order_books_initialized": self.order_book_tracker.ready,
+            "account_balance": not self._trading_required or len(self._account_balances) > 0,
+            "trading_rule_initialized": len(self._trading_rules) > 0,
+            "user_stream_initialized":
+                self._user_stream_tracker.data_source.last_recv_time > 0 if self._trading_required else True,
+        }
 
     @property
     def ready(self) -> bool:
@@ -127,7 +134,7 @@ class KucoinExchange(ExchangePyBase):
 
     async def start_network(self):
         self._stop_network()
-        self._order_book_tracker.start()
+        self.order_book_tracker.start()
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
         self._trading_fees_polling_task = safe_ensure_future(self._trading_fees_polling_loop())
         if self._trading_required:
@@ -142,7 +149,7 @@ class KucoinExchange(ExchangePyBase):
         self._last_timestamp = 0
         self._poll_notifier = asyncio.Event()
 
-        self._order_book_tracker.stop()
+        self.order_book_tracker.stop()
         if self._status_polling_task is not None:
             self._status_polling_task.cancel()
             self._status_polling_task = None
@@ -205,13 +212,100 @@ class KucoinExchange(ExchangePyBase):
             time_synchronizer=self._time_synchronizer,
         )
 
-    def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
-        return KucoinAPIUserStreamDataSource(
-            auth=self._auth,
-            trading_pairs=self._trading_pairs,
-            domain=self.domain,
-            api_factory=self._web_assistants_factory,
-            throttler=self._throttler,
+        safe_ensure_future(self._create_order(
+            trade_type=TradeType.SELL,
+            order_id=order_id,
+            trading_pair=trading_pair,
+            amount=amount,
+            order_type=order_type,
+            price=price))
+        return order_id
+
+    def cancel(self, trading_pair: str, order_id: str):
+        """
+        Creates a promise to cancel an order in the exchange
+
+        :param trading_pair: the trading pair the order to cancel operates with
+        :param order_id: the client id of the order to cancel
+
+        :return: the client id of the order to cancel
+        """
+        safe_ensure_future(self._execute_cancel(trading_pair, order_id))
+        return order_id
+
+    async def cancel_all(self, timeout_seconds: float) -> List[CancellationResult]:
+        """
+        Cancels all currently active orders. The cancellations are performed in parallel tasks.
+
+        :param timeout_seconds: the maximum time (in seconds) the cancel logic should run
+
+        :return: a list of CancellationResult instances, one for each of the orders to be cancelled
+        """
+        incomplete_orders = [o for o in self.in_flight_orders.values() if not o.is_done]
+        tasks = [self._execute_cancel(o.trading_pair, o.client_order_id) for o in incomplete_orders]
+        order_id_set = set([o.client_order_id for o in incomplete_orders])
+        successful_cancellations = []
+
+        try:
+            async with timeout(timeout_seconds):
+                cancellation_results = await safe_gather(*tasks, return_exceptions=True)
+                for cr in cancellation_results:
+                    if isinstance(cr, Exception):
+                        continue
+                    if cr is not None:
+                        client_order_id = cr
+                        order_id_set.remove(client_order_id)
+                        successful_cancellations.append(CancellationResult(client_order_id, True))
+        except Exception:
+            self.logger().network(
+                "Unexpected error cancelling orders.",
+                exc_info=True,
+                app_warning_msg="Failed to cancel order. Check API key and network connection."
+            )
+
+        failed_cancellations = [CancellationResult(oid, False) for oid in order_id_set]
+        return successful_cancellations + failed_cancellations
+
+    def get_order_book(self, trading_pair: str) -> OrderBook:
+        """
+        Returns the current order book for a particular market
+
+        :param trading_pair: the pair of tokens for which the order book should be retrieved
+        """
+        if trading_pair not in self.order_book_tracker.order_books:
+            raise ValueError(f"No order book exists for '{trading_pair}'.")
+        return self.order_book_tracker.order_books[trading_pair]
+
+    def start_tracking_order(self,
+                             order_id: str,
+                             exchange_order_id: Optional[str],
+                             trading_pair: str,
+                             trade_type: TradeType,
+                             price: Decimal,
+                             amount: Decimal,
+                             order_type: OrderType):
+        """
+        Starts tracking an order by adding it to the order tracker.
+
+        :param order_id: the order identifier
+        :param exchange_order_id: the identifier for the order in the exchange
+        :param trading_pair: the token pair for the operation
+        :param trade_type: the type of order (buy or sell)
+        :param price: the price for the order
+        :param amount: the amount for the order
+        :param order_type: type of execution for the order (MARKET, LIMIT, LIMIT_MAKER)
+        """
+        self._order_tracker.start_tracking_order(
+            InFlightOrder(
+                client_order_id=order_id,
+                exchange_order_id=exchange_order_id,
+                trading_pair=trading_pair,
+                order_type=order_type,
+                trade_type=trade_type,
+                amount=amount,
+                price=price,
+                creation_timestamp=self.current_timestamp
+            )
         )
 
     def _get_fee(self,
@@ -242,6 +336,106 @@ class KucoinExchange(ExchangePyBase):
             )
         return fee
 
+    async def _initialize_trading_pair_symbol_map(self):
+        try:
+            exchange_info = await self._api_request(
+                method=RESTMethod.GET,
+                path_url=CONSTANTS.SYMBOLS_PATH_URL)
+            self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
+        except Exception:
+            self.logger().exception("There was an error requesting exchange info.")
+
+    def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
+        mapping = bidict()
+        for symbol_data in filter(utils.is_pair_information_valid, exchange_info.get("data", [])):
+            mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["baseCurrency"],
+                                                                        quote=symbol_data["quoteCurrency"])
+        self._set_trading_pair_symbol_map(mapping)
+
+    async def _create_order(self,
+                            trade_type: TradeType,
+                            order_id: str,
+                            trading_pair: str,
+                            amount: Decimal,
+                            order_type: OrderType,
+                            price: Optional[Decimal] = None):
+        """
+        Creates a an order in the exchange using the parameters to configure it
+
+        :param trade_type: the side of the order (BUY of SELL)
+        :param order_id: the id that should be assigned to the order (the client id)
+        :param trading_pair: the token pair to operate with
+        :param amount: the order amount
+        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
+        :param price: the order price
+        """
+        trading_rule = self._trading_rules[trading_pair]
+
+        if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER]:
+            price = self.quantize_order_price(trading_pair, price)
+            amount = self.quantize_order_amount(trading_pair=trading_pair, amount=amount, price=price)
+        else:
+            amount = self.quantize_order_amount(trading_pair, amount)
+
+        self.start_tracking_order(
+            order_id=order_id,
+            exchange_order_id=None,
+            trading_pair=trading_pair,
+            order_type=order_type,
+            trade_type=trade_type,
+            price=price,
+            amount=amount
+        )
+
+        if amount < trading_rule.min_order_size:
+            self.logger().warning(f"{trade_type.name.title()} order amount {amount} is lower than the minimum order"
+                                  f" size {trading_rule.min_order_size}. The order will not be created.")
+            order_update: OrderUpdate = OrderUpdate(
+                client_order_id=order_id,
+                trading_pair=trading_pair,
+                update_timestamp=self.current_timestamp,
+                new_state=OrderState.FAILED,
+            )
+            self._order_tracker.process_order_update(order_update)
+            return
+
+        try:
+
+            exchange_order_id = await self._place_order(
+                order_id=order_id,
+                trading_pair=trading_pair,
+                amount=amount,
+                trade_type=trade_type,
+                order_type=order_type,
+                price=price)
+
+            order_update: OrderUpdate = OrderUpdate(
+                client_order_id=order_id,
+                exchange_order_id=exchange_order_id,
+                trading_pair=trading_pair,
+                update_timestamp=self.current_timestamp,
+                new_state=OrderState.OPEN,
+            )
+            self._order_tracker.process_order_update(order_update)
+
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.logger().network(
+                f"Error submitting {trade_type.name.lower()} {order_type.name.upper()} order to Kucoin for "
+                f"{amount} {trading_pair} "
+                f"{price}.",
+                exc_info=True,
+                app_warning_msg="Failed to submit buy order to Kucoin. Check API key and network connection."
+            )
+            order_update: OrderUpdate = OrderUpdate(
+                client_order_id=order_id,
+                trading_pair=trading_pair,
+                update_timestamp=self.current_timestamp,
+                new_state=OrderState.FAILED,
+            )
+            self._order_tracker.process_order_update(order_update)
+
     async def _place_order(self,
                            order_id: str,
                            trading_pair: str,
@@ -256,11 +450,7 @@ class KucoinExchange(ExchangePyBase):
             "size": str(amount),
             "clientOid": order_id,
             "side": side,
-            "symbol": await KucoinAPIOrderBookDataSource.exchange_symbol_associated_to_pair(
-                trading_pair=trading_pair,
-                domain=self._domain,
-                api_factory=self._web_assistants_factory,
-                throttler=self._throttler),
+            "symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
             "type": order_type_str,
         }
         if order_type is OrderType.LIMIT:
@@ -390,17 +580,39 @@ class KucoinExchange(ExchangePyBase):
                 del self._account_available_balances[asset_name]
                 del self._account_balances[asset_name]
 
+    async def _update_trading_rules(self):
+        exchange_info = await self._api_request(path_url=CONSTANTS.SYMBOLS_PATH_URL, method=RESTMethod.GET)
+        trading_rules_list = await self._format_trading_rules(exchange_info)
+        self._trading_rules.clear()
+        for trading_rule in trading_rules_list:
+            self._trading_rules[trading_rule.trading_pair] = trading_rule
+        self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
+
+    async def _update_trading_fees(self):
+        trading_symbols = [await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+                           for trading_pair in self._trading_pairs]
+
+        params = {"symbols": ",".join(trading_symbols)}
+
+        resp = await self._api_request(
+            path_url=CONSTANTS.FEE_PATH_URL,
+            params=params,
+            method=RESTMethod.GET,
+            is_auth_required=True,
+        )
+
+        fees_json = resp["data"]
+        for fee_json in fees_json:
+            trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=fee_json["symbol"])
+            self._trading_fees[trading_pair] = fee_json
+
     async def _format_trading_rules(self, raw_trading_pair_info: Dict[str, Any]) -> List[TradingRule]:
         trading_rules = []
 
         for info in raw_trading_pair_info["data"]:
             if utils.is_pair_information_valid(info):
                 try:
-                    trading_pair = await KucoinAPIOrderBookDataSource.trading_pair_associated_to_exchange_symbol(
-                        symbol=info.get("symbol"),
-                        domain=self._domain,
-                        api_factory=self._web_assistants_factory,
-                        throttler=self._throttler)
+                    trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=info.get("symbol"))
                     trading_rules.append(
                         TradingRule(trading_pair=trading_pair,
                                     min_order_size=Decimal(info["baseMinSize"]),
@@ -492,6 +704,19 @@ class KucoinExchange(ExchangePyBase):
         except Exception:
             self.logger().exception("Error requesting time from Kucoin server")
             raise
+
+    async def _get_last_traded_price(self, trading_pair: str) -> float:
+        params = {
+            "symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+        }
+
+        resp_json = await self._api_request(
+            path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL,
+            method=RESTMethod.GET,
+            params=params
+        )
+
+        return float(resp_json["data"]["price"])
 
     async def _api_request(self,
                            path_url,
