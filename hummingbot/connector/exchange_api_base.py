@@ -97,9 +97,6 @@ class ExchangeApiBase(object):
     def name_cap(self) -> str:
         return self.name.capitalize()
 
-    def name(self):
-        raise NotImplementedError
-
     async def _sleep(self, delay: float):
         await asyncio.sleep(delay)
 
@@ -107,10 +104,8 @@ class ExchangeApiBase(object):
     def status_dict(self) -> Dict[str, bool]:
         return {
             "symbols_mapping_initialized":
-                # TODO
                 self._orderbook_ds.trading_pair_symbol_map_ready(domain=self._domain),
             "user_stream_initialized":
-                # TODO
                 self._user_stream_tracker.data_source.last_recv_time > 0 if self._trading_required else True,
             "order_books_initialized":
                 self._order_book_tracker.ready,
@@ -257,7 +252,7 @@ class ExchangeApiBase(object):
                 # the following method is implementation-specific
                 await self._polling_status_fetch_updates()
 
-                self._last_poll_timestamp = self.current_timestamp
+                self._last_poll_timestamp = self.exchange.current_timestamp
                 self._poll_notifier = asyncio.Event()
             except asyncio.CancelledError:
                 raise
@@ -282,19 +277,6 @@ class ExchangeApiBase(object):
         except Exception:
             self.logger().exception(f"Error requesting time from {self.name_cap} server")
             raise
-
-    async def _iter_user_event_queue(self) -> AsyncIterable[Dict[str, any]]:
-        """
-        Called by _user_stream_event_listener.
-        """
-        while True:
-            try:
-                yield await self._user_stream_tracker.user_stream.get()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                self.logger().exception("Error while reading user events queue. Retrying in 1s.")
-                await self._sleep(1.0)
 
     # Exchange / Trading logic methods
     # that call the API
@@ -335,11 +317,26 @@ class ExchangeApiBase(object):
             is_auth_required=is_auth_required,
             limit_id=limit_id)
 
+    # TODO review naming
+    # data normalisation could be better encapsuled in an ApiDataModel obj
     def _get_enqueue_callable(self, channel):
         for ch, clb in self.USER_CHANNELS:
             if channel == ch:
                 return clb
         return None
+
+    async def _iter_user_event_queue(self) -> AsyncIterable[Dict[str, any]]:
+        """
+        Called by _user_stream_event_listener.
+        """
+        while True:
+            try:
+                yield await self._user_stream_tracker.user_stream.get()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().exception("Error while reading user events queue. Retrying in 1s.")
+                await self._sleep(1.0)
 
     async def _user_stream_event_listener(self):
         """
@@ -350,6 +347,7 @@ class ExchangeApiBase(object):
             channel: str = event_message.get("channel", None)
             results: str = event_message.get("result", None)
             try:
+                # TODO ApiDataModel.process_ws_message()
                 enqueue_callable = self._get_enqueue_callable(channel)
                 if not enqueue_callable:
                     self.logger().error(
@@ -366,8 +364,11 @@ class ExchangeApiBase(object):
                     "Unexpected error in user stream listener loop.", exc_info=True)
                 await self._sleep(5.0)
 
-    # Methods called by the Exchange object
+    # Public methods
     #
+    def name(self):
+        raise NotImplementedError
+
     def init_auth(self):
         raise NotImplementedError
 
@@ -380,18 +381,16 @@ class ExchangeApiBase(object):
     def get_fee(self):
         raise NotImplementedError
 
-    # Internal methods to update data and process
+    # Private methods: update data and process
+    # handle WS messages
+    # polling of loops
     #
-    def _format_trading_rules(self):
+    async def _format_trading_rules(self):
         raise NotImplementedError
 
-    # Internal methods for WS messages
-    #
     async def _process_balance_message_ws(self):
         raise NotImplementedError
 
-    # Internal methods for polling loops
-    #
     async def _polling_status_fetch_updates(self):
         raise NotImplementedError
 

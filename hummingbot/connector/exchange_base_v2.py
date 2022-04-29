@@ -132,6 +132,11 @@ class ExchangeBaseV2(ExchangeBase):
         return self.SUPPORTED_ORDER_TYPES
 
     @property
+    def account_balances(self) -> Dict:
+        return self._account_balances
+
+    # TODO
+    @property
     def order_books(self) -> Dict[str, OrderBook]:
         return self._api.order_book_tracker.order_books
 

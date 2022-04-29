@@ -21,12 +21,6 @@ from hummingbot.core.utils.async_utils import safe_gather
 class GateIoExchangeApi(ExchangeApiBase):
     DEFAULT_DOMAIN = ""
     RATE_LIMITS = CONSTANTS.RATE_LIMITS
-    SUPPORTED_ORDER_TYPES = [
-        OrderType.LIMIT
-    ]
-
-    HBOT_ORDER_ID_PREFIX = CONSTANTS.HBOT_ORDER_ID
-    MAX_ORDER_ID_LEN = CONSTANTS.MAX_ID_LEN
 
     ORDERBOOK_DS_CLASS = GateIoAPIOrderBookDataSource
     USERSTREAM_DS_CLASS = GateIoAPIUserStreamDataSource
@@ -58,9 +52,11 @@ class GateIoExchangeApi(ExchangeApiBase):
         :param trading_pairs: The market trading pairs which to track order book data.
         :param trading_required: Whether actual trading is needed.
         """
-        # TODO this is bad, double reference
-        # but just needed in 1 place, for order update
+        # TODO this is bad, cross references mean wrong decoupling
+        # acceptable given it's very limited and the benefits
+        # but better to solve, see below order_books() property comments
         self.exchange = exchange
+
         self._auth_credentials = auth_credentials
         self._trading_required = trading_required
         self._trading_pairs = trading_pairs
@@ -72,17 +68,16 @@ class GateIoExchangeApi(ExchangeApiBase):
         )
         super().__init__()
 
+    # TODO understand how to cleanly decouple Exchange and Api
+    # regarding order books, balances, in flight orders
+    # Probably the best thing is to have an ExchangeBooks object
+    # that contains the shared state(s) to limit cross references
+    # to what is really needed
+    #
+    # OrderBook is a hbot class and should be in the Exchange / ExchangeBooks
     @property
-    def in_flight_orders(self):
-        return self.exchange._order_tracker.active_orders
-
-    @property
-    def _account_balances(self):
-        return self.exchange._account_balances
-
-    @property
-    def current_timestamp(self):
-        return self.exchange.current_timestamp
+    def order_books(self) -> Dict:
+        return self._api.order_book_tracker.order_books
 
     def init_auth(self):
         # TODO improve
@@ -128,7 +123,7 @@ class GateIoExchangeApi(ExchangeApiBase):
         orders_tasks = []
         trades_tasks = []
         reviewed_orders = []
-        tracked_orders = list(self.in_flight_orders.values())
+        tracked_orders = list(self.exchange.in_flight_orders.values())
         if len(tracked_orders) <= 0:
             return
 
@@ -300,9 +295,9 @@ class GateIoExchangeApi(ExchangeApiBase):
                     f"Error parsing the trading pair rule {rule}. Skipping.", exc_info=True)
         return result
 
-    #
     # Exchange API actions
     #
+    # TODO do not pass higher level object here
     async def cancel_order(self, order_id, tracked_order):
         """
         Cancels an order via the API
