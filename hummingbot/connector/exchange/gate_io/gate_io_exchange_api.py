@@ -354,3 +354,6 @@ class GateIoExchangeApi(ExchangeApiBase):
             raise self.web_utils.APIError({'label': 'ORDER_REJECTED', 'message': 'Order rejected.'})
         exchange_order_id = str(order_result["id"])
         return exchange_order_id, time.time()
+
+    async def get_api_message(self):
+        return await self._api.queue.get()

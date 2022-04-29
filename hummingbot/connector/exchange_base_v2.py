@@ -570,7 +570,7 @@ class ExchangeBaseV2(ExchangeBase):
     async def _iter_api_queue(self) -> AsyncIterable[Dict[str, any]]:
         while True:
             try:
-                yield await self._api.queue.get()
+                yield await self._api.get_api_message()
             except asyncio.CancelledError:
                 raise
             except Exception:
