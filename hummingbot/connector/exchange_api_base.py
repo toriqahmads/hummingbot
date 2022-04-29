@@ -100,6 +100,7 @@ class ExchangeApiBase(object):
     async def _sleep(self, delay: float):
         await asyncio.sleep(delay)
 
+    # TODO move this to Exchange?
     @property
     def status_dict(self) -> Dict[str, bool]:
         return {
