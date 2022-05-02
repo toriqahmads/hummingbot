@@ -61,11 +61,13 @@ export class NonceLocalStorage extends LocalStorage {
     nonces: NonceInfo[]
   ) {
     let value = '';
+
     for (const nonce of nonces) {
       const nonceValue: string = String(nonce.nonce);
       const nonceExpiry: string = String(nonce.expiry);
       value = value + ',' + `${nonceValue}:${nonceExpiry}`;
     }
+
     return this.save(`${chain}/${String(chainId)}/${address}/pending`, value);
   }
 
@@ -85,14 +87,15 @@ export class NonceLocalStorage extends LocalStorage {
         const address: string = String(splitKey[2]);
         const rawNonceValues: string[] = value.split(',');
 
-        const nonceInfoList: NonceInfo[] = [];
+        const nonceInfoList = [];
         for (const values of rawNonceValues) {
           const nonceValues: string[] = values.split(':');
           nonceInfoList.push(
             new NonceInfo(parseInt(nonceValues[0]), parseInt(nonceValues[1]))
           );
         }
-        return [`${address}/pending`, nonceInfoList];
+        nonceInfoList.splice(0, 1);
+        return [`${address}`, nonceInfoList];
       }
       return;
     });
@@ -159,8 +162,8 @@ export class EVMNonceManager {
   constructor(
     chainName: string,
     chainId: number,
-    localNonceTTL: number = 300,
-    staleNonceTTL: number = 300,
+    localNonceTTL: number = 300 * 1000,
+    staleNonceTTL: number = 300 * 1000,
     dbPath: string = 'gateway.level'
   ) {
     this.#chainName = chainName;
@@ -228,7 +231,6 @@ export class EVMNonceManager {
         return;
       }
 
-      console.log('Fetching latest transaction count from EVM node...');
       const externalNonce: number =
         (await this._provider.getTransactionCount(ethAddress)) - 1;
 
@@ -250,7 +252,8 @@ export class EVMNonceManager {
       ) {
         this.#addressToPendingNonces[ethAddress] = this.#addressToPendingNonces[
           ethAddress
-        ].filter((nonceInfo) => externalNonce >= nonceInfo.nonce);
+        ].filter((nonceInfo) => nonceInfo.nonce > externalNonce);
+
         await this.#db.savePendingNonces(
           this.#chainName,
           this.#chainId,
@@ -316,27 +319,35 @@ export class EVMNonceManager {
     if (this._provider !== null) {
       if (this.#addressToPendingNonces[ethAddress]) {
         await this.mergeNonceFromEVMNode(ethAddress);
-        // TODO: Find next gap or max of entries.
+
         const pendingNonces: NonceInfo[] =
           this.#addressToPendingNonces[ethAddress];
+
         for (const nonceInfo of pendingNonces) {
-          if (nonceInfo.expiry >= now) {
+          if (now > nonceInfo.expiry) {
             newNonce = nonceInfo;
+            newNonce.expiry = now + this.#staleNonceTTL;
+            break;
           }
         }
         if (!newNonce) {
+          // All pending nonce have yet to expire.
+          // Use last entry in pendingNonce to determine next nonce.
           newNonce = new NonceInfo(
-            this.#addressToPendingNonces[ethAddress][-1].nonce + 1,
+            this.#addressToPendingNonces[ethAddress][
+              this.#addressToPendingNonces[ethAddress].length - 1
+            ].nonce + 1,
             now + this.#staleNonceTTL
           );
+          this.#addressToPendingNonces[ethAddress].push(newNonce);
         }
       } else {
         newNonce = new NonceInfo(
           (await this.getNonce(ethAddress)) + 1,
           now + this.#staleNonceTTL
         );
+        this.#addressToPendingNonces[ethAddress] = [newNonce];
       }
-      this.#addressToPendingNonces[ethAddress].push(newNonce);
       await this.#db.savePendingNonces(
         this.#chainName,
         this.#chainId,
