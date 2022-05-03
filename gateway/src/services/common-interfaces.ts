@@ -82,8 +82,7 @@ export interface Uniswapish {
   estimateSellTrade(
     baseToken: Tokenish,
     quoteToken: Tokenish,
-    amount: BigNumber,
-    allowedSlippage?: string
+    amount: BigNumber
   ): Promise<ExpectedTrade>;
 
   /**
@@ -99,8 +98,7 @@ export interface Uniswapish {
   estimateBuyTrade(
     quoteToken: Tokenish,
     baseToken: Tokenish,
-    amount: BigNumber,
-    allowedSlippage?: string
+    amount: BigNumber
   ): Promise<ExpectedTrade>;
 
   /**
@@ -127,8 +125,7 @@ export interface Uniswapish {
     gasLimit: number,
     nonce?: number,
     maxFeePerGas?: BigNumber,
-    maxPriorityFeePerGas?: BigNumber,
-    allowedSlippage?: string
+    maxPriorityFeePerGas?: BigNumber
   ): Promise<Transaction>;
 }
 
