@@ -3,6 +3,9 @@ import { logger } from './logger';
 import { LocalStorage } from './local-storage';
 import {
   InitializationError,
+  InvalidNonceError,
+  INVALID_NONCE_ERROR_CODE,
+  INVALID_NONCE_ERROR_MESSAGE,
   SERVICE_UNITIALIZED_ERROR_CODE,
   SERVICE_UNITIALIZED_ERROR_MESSAGE,
 } from './error-handler';
@@ -153,7 +156,7 @@ export class EVMNonceManager {
   #chainId: number;
   #chainName: string;
   #localNonceTTL: number;
-  #staleNonceTTL: number;
+  #pendingNonceTTL: number;
   #db: NonceLocalStorage;
 
   // this should be private but then we cannot mock it
@@ -163,14 +166,14 @@ export class EVMNonceManager {
     chainName: string,
     chainId: number,
     localNonceTTL: number = 300 * 1000,
-    staleNonceTTL: number = 300 * 1000,
+    pendingNonceTTL: number = 300 * 1000,
     dbPath: string = 'gateway.level'
   ) {
     this.#chainName = chainName;
     this.#chainId = chainId;
     this.#localNonceTTL = localNonceTTL;
     this.#db = new NonceLocalStorage(dbPath);
-    this.#staleNonceTTL = staleNonceTTL;
+    this.#pendingNonceTTL = pendingNonceTTL;
   }
 
   // init can be called many times and generally should always be called
@@ -179,7 +182,16 @@ export class EVMNonceManager {
     if (this.#localNonceTTL < 0) {
       throw new InitializationError(
         SERVICE_UNITIALIZED_ERROR_MESSAGE(
-          'EVMNonceManager.init delay must be greater than or equal to zero.'
+          'EVMNonceManager.init localNonceTTL must be greater than or equal to zero.'
+        ),
+        SERVICE_UNITIALIZED_ERROR_CODE
+      );
+    }
+
+    if (this.#pendingNonceTTL < 0) {
+      throw new InitializationError(
+        SERVICE_UNITIALIZED_ERROR_MESSAGE(
+          'EVMNonceManager.init pendingNonceTTL must be greate than or equal to zero.'
         ),
         SERVICE_UNITIALIZED_ERROR_CODE
       );
@@ -290,7 +302,7 @@ export class EVMNonceManager {
         const now: number = new Date().getTime();
         this.#addressToNonce[ethAddress] = new NonceInfo(
           externalNonce,
-          now + this.#staleNonceTTL
+          now + this.#pendingNonceTTL
         );
         await this.#db.saveCurrentNonce(
           this.#chainName,
@@ -326,7 +338,7 @@ export class EVMNonceManager {
         for (const nonceInfo of pendingNonces) {
           if (now > nonceInfo.expiry) {
             newNonce = nonceInfo;
-            newNonce.expiry = now + this.#staleNonceTTL;
+            newNonce.expiry = now + this.#pendingNonceTTL;
             break;
           }
         }
@@ -337,14 +349,14 @@ export class EVMNonceManager {
             this.#addressToPendingNonces[ethAddress][
               this.#addressToPendingNonces[ethAddress].length - 1
             ].nonce + 1,
-            now + this.#staleNonceTTL
+            now + this.#pendingNonceTTL
           );
           this.#addressToPendingNonces[ethAddress].push(newNonce);
         }
       } else {
         newNonce = new NonceInfo(
           (await this.getNonce(ethAddress)) + 1,
-          now + this.#staleNonceTTL
+          now + this.#pendingNonceTTL
         );
         this.#addressToPendingNonces[ethAddress] = [newNonce];
       }
@@ -371,6 +383,32 @@ export class EVMNonceManager {
     */
     if (this._provider !== null) {
       const now: number = new Date().getTime();
+
+      if (this.#addressToNonce[ethAddress]) {
+        if (txNonce > this.#addressToNonce[ethAddress].nonce) {
+          const nonce: NonceInfo = new NonceInfo(
+            txNonce,
+            now + this.#localNonceTTL
+          );
+          this.#addressToNonce[ethAddress] = nonce;
+          await this.#db.saveCurrentNonce(
+            this.#chainName,
+            this.#chainId,
+            ethAddress,
+            nonce
+          );
+          return;
+        } else {
+          logger.error('Provided txNonce is < currentNonce');
+          throw new InvalidNonceError(
+            INVALID_NONCE_ERROR_MESSAGE +
+              `txNonce(${txNonce}) < currentNonce(${
+                this.#addressToNonce[ethAddress].nonce
+              })`,
+            INVALID_NONCE_ERROR_CODE
+          );
+        }
+      }
       const nonce: NonceInfo = new NonceInfo(
         txNonce,
         now + this.#localNonceTTL
