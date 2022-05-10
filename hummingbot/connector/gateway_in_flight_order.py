@@ -2,10 +2,10 @@ import copy
 
 from async_timeout import timeout
 from decimal import Decimal
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate
+from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate, TradeUpdate
 
 
 GET_GATEWAY_EX_ORDER_ID_TIMEOUT = 30  # seconds
@@ -134,3 +134,57 @@ class GatewayInFlightOrder(InFlightOrder):
             self.last_update_timestamp = order_update.update_timestamp
 
         return updated
+
+    @classmethod
+    def from_json(cls, data: Dict[str, Any]) -> "GatewayInFlightOrder":
+        """
+        Initialize an InFlightOrder using a JSON object
+        :param data: JSON data
+        :return: Formatted InFlightOrder
+        """
+        order = GatewayInFlightOrder(
+            client_order_id=data["client_order_id"],
+            trading_pair=data["trading_pair"],
+            order_type=getattr(OrderType, data["order_type"]),
+            trade_type=getattr(TradeType, data["trade_type"]),
+            amount=Decimal(data["amount"]),
+            price=Decimal(data["price"]),
+            exchange_order_id=data["exchange_order_id"],
+            initial_state=OrderState(int(data["last_state"])),
+            creation_timestamp=data.get("creation_timestamp", -1)
+        )
+        order.executed_amount_base = Decimal(data["executed_amount_base"])
+        order.executed_amount_quote = Decimal(data["executed_amount_quote"])
+        order.order_fills.update({key: TradeUpdate.from_json(value)
+                                  for key, value
+                                  in data.get("order_fills", {}).items()})
+        order._nonce = data["nonce"]
+        order._cancel_tx_hash = data["cancel_tx_hash"]
+
+        order.check_filled_condition()
+
+        return order
+
+    def to_json(self) -> Dict[str, Any]:
+        """
+        Returns this InFlightOrder as a JSON object.
+        :return: JSON object
+        """
+        return {
+            "client_order_id": self.client_order_id,
+            "exchange_order_id": self.exchange_order_id,
+            "trading_pair": self.trading_pair,
+            "order_type": self.order_type.name,
+            "trade_type": self.trade_type.name,
+            "price": str(self.price),
+            "amount": str(self.amount),
+            "executed_amount_base": str(self.executed_amount_base),
+            "executed_amount_quote": str(self.executed_amount_quote),
+            "last_state": str(self.current_state.value),
+            "leverage": str(self.leverage),
+            "position": self.position.value,
+            "creation_timestamp": self.creation_timestamp,
+            "order_fills": {key: fill.to_json() for key, fill in self.order_fills.items()},
+            "nonce": self._nonce,
+            "cancel_tx_hash": self._cancel_tx_hash
+        }

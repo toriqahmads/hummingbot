@@ -208,6 +208,24 @@ class GatewayEVMAMM(ConnectorBase):
     def in_flight_orders(self) -> Dict[str, GatewayInFlightOrder]:
         return self._order_tracker.active_orders
 
+    @property
+    def tracking_states(self) -> Dict[str, Any]:
+        """
+        Returns a dictionary associating current active orders client id to their JSON representation
+        """
+        return {
+            key: value.to_json()
+            for key, value in self.in_flight_orders.items()
+        }
+
+    def restore_tracking_states(self, saved_states: Dict[str, Any]):
+        """
+        Restore in-flight orders from saved tracking states, this is st the connector can pick up on where it left off
+        when it disconnects.
+        :param saved_states: The saved tracking_states.
+        """
+        self._order_tracker.restore_tracking_states(tracking_states=saved_states)
+
     def create_approval_order_id(self, token_symbol: str) -> str:
         return f"approve-{self.connector_name}-{token_symbol}"
 
