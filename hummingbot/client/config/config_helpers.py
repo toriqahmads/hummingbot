@@ -90,9 +90,31 @@ class ConfigTraversalItem:
     field_info: FieldInfo
 
 
+class HBConfigLocker:
+    def __init__(self):
+        self._locked_config: Optional[BaseClientModel] = None
+
+    def __getattr__(self, item):
+        if self._locked_config is None:
+            raise RuntimeError("A config was never locked.")
+        value = getattr(self._locked_config, item)
+        return value
+
+    @property
+    def is_locked(self):
+        return self._locked_config is not None
+
+    def lock_config(self, config: BaseClientModel):
+        self._locked_config = config
+
+    def unlock_config(self):
+        self._locked_config = None
+
+
 class ClientConfigAdapter:
     def __init__(self, hb_config: BaseClientModel):
         self._hb_config = hb_config
+        self._config_locker = HBConfigLocker()
 
     def __getattr__(self, item):
         value = getattr(self._hb_config, item)
@@ -211,6 +233,9 @@ class ClientConfigAdapter:
                 for e in errors
             ]
         return validation_errors
+
+    def lock_config(self):
+        self._config_locker.lock_config(self._hb_config)
 
     @contextlib.contextmanager
     def _disable_validation(self):

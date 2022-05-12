@@ -2,13 +2,9 @@ from datetime import datetime, time
 from decimal import Decimal
 from typing import Dict, Optional, Union
 
-from pydantic import Field, validator, root_validator
+from pydantic import Field, root_validator, validator
 
-from hummingbot.client.config.config_data_types import (
-    BaseClientModel,
-    BaseTradingStrategyConfigMap,
-    ClientFieldData,
-)
+from hummingbot.client.config.config_data_types import BaseClientModel, BaseTradingStrategyConfigMap, ClientFieldData
 from hummingbot.client.config.config_validators import (
     validate_bool,
     validate_datetime_iso_string,
@@ -362,7 +358,7 @@ class AvellanedaMarketMakingConfigMap(BaseTradingStrategyConfigMap):
     def validate_execution_timeframe(
         cls, v: Union[str, InfiniteModel, FromDateToDateModel, DailyBetweenTimesModel]
     ):
-        if isinstance(v, (InfiniteModel, FromDateToDateModel, DailyBetweenTimesModel, Dict)):
+        if isinstance(v, list(EXECUTION_TIMEFRAME_MODELS.values()) + [Dict]):
             sub_model = v
         elif v not in EXECUTION_TIMEFRAME_MODELS:
             raise ValueError(
@@ -390,7 +386,7 @@ class AvellanedaMarketMakingConfigMap(BaseTradingStrategyConfigMap):
 
     @validator("order_levels_mode", pre=True)
     def validate_order_levels_mode(cls, v: Union[str, SingleOrderLevelModel, MultiOrderLevelModel]):
-        if isinstance(v, (SingleOrderLevelModel, MultiOrderLevelModel, Dict)):
+        if isinstance(v, list(ORDER_LEVEL_MODELS.values()) + [Dict]):
             sub_model = v
         elif v not in ORDER_LEVEL_MODELS:
             raise ValueError(
@@ -402,7 +398,7 @@ class AvellanedaMarketMakingConfigMap(BaseTradingStrategyConfigMap):
 
     @validator("hanging_orders_mode", pre=True)
     def validate_hanging_orders_mode(cls, v: Union[str, IgnoreHangingOrdersModel, TrackHangingOrdersModel]):
-        if isinstance(v, (TrackHangingOrdersModel, IgnoreHangingOrdersModel, Dict)):
+        if isinstance(v, list(HANGING_ORDER_MODELS.values()) + [Dict]):
             sub_model = v
         elif v not in HANGING_ORDER_MODELS:
             raise ValueError(
