@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from hummingbot.connector.exchange.kucoin import (
     kucoin_auth,
@@ -15,6 +15,9 @@ from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFa
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
+if TYPE_CHECKING:
+    from hummingbot.connector.exchange.kucoin.kucoin_exchange import KucoinExchange
+
 
 class KucoinAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
@@ -22,10 +25,10 @@ class KucoinAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
     def __init__(self,
                  auth: KucoinAuth,
-                 domain: str = CONSTANTS.DEFAULT_DOMAIN,
-                 api_factory: Optional[WebAssistantsFactory] = None,
-                 throttler: Optional[AsyncThrottler] = None,
-                 time_synchronizer: Optional[TimeSynchronizer] = None, ):
+                 trading_pairs: List[str],
+                 connector: 'KucoinExchange',
+                 api_factory: WebAssistantsFactory,
+                 domain: str = CONSTANTS.DEFAULT_DOMAIN):
         super().__init__()
         self._auth: KucoinAuth = auth
         self._time_synchronizer = time_synchronizer
@@ -43,7 +46,7 @@ class KucoinAPIUserStreamDataSource(UserStreamTrackerDataSource):
     async def _connected_websocket_assistant(self) -> WSAssistant:
         rest_assistant = await self._api_factory.get_rest_assistant()
         connection_info = await rest_assistant.execute_request(
-            url=web_utils.rest_url(path_url=CONSTANTS.PRIVATE_WS_DATA_PATH_URL, domain=self._domain),
+            url=web_utils.private_rest_url(path_url=CONSTANTS.PRIVATE_WS_DATA_PATH_URL, domain=self._domain),
             method=RESTMethod.POST,
             throttler_limit_id=CONSTANTS.PRIVATE_WS_DATA_PATH_URL,
             is_auth_required=True,
@@ -115,8 +118,3 @@ class KucoinAPIUserStreamDataSource(UserStreamTrackerDataSource):
                 and event_message.get("type") == "message"
                 and event_message.get("subject") in [CONSTANTS.ORDER_CHANGE_EVENT_TYPE, CONSTANTS.BALANCE_EVENT_TYPE]):
             queue.put_nowait(event_message)
-
-    async def _get_ws_assistant(self) -> WSAssistant:
-        if self._ws_assistant is None:
-            self._ws_assistant = await self._api_factory.get_ws_assistant()
-        return self._ws_assistant

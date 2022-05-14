@@ -1,6 +1,6 @@
 import asyncio
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from async_timeout import timeout
 from bidict import bidict
@@ -19,9 +19,7 @@ from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import combine_to_hb_trading_pair
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate, TradeUpdate
-from hummingbot.core.data_type.limit_order import LimitOrder
-from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.data_type.order_book_tracker import OrderBookTracker
+from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.utils.async_utils import safe_gather
@@ -113,79 +111,20 @@ class KucoinExchange(ExchangePyBase):
         }
 
     @property
-    def ready(self) -> bool:
-        current_status = self.status_dict
-        return all(current_status.values())
+    def trading_pairs_request_path(self):
+        return CONSTANTS.SYMBOLS_PATH_URL
 
-    def restore_tracking_states(self, saved_states: Dict[str, Any]):
-        """
-        Restore in-flight orders from saved tracking states, this is st the connector can pick up on where it left off
-        when it disconnects.
+    @property
+    def check_network_request_path(self):
+        return CONSTANTS.SERVER_TIME_PATH_URL
 
-        :param saved_states: The saved tracking_states.
-        """
-        self._order_tracker.restore_tracking_states(tracking_states=saved_states)
+    @property
+    def trading_pairs(self):
+        return self._trading_pairs
 
-    async def start_network(self):
-        self._stop_network()
-        self.order_book_tracker.start()
-        self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
-        self._trading_fees_polling_task = safe_ensure_future(self._trading_fees_polling_loop())
-        if self._trading_required:
-            self._status_polling_task = safe_ensure_future(self._status_polling_loop())
-            self._user_stream_tracker_task = safe_ensure_future(self._user_stream_tracker.start())
-            self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
-            await self._update_balances()
-
-    def _stop_network(self):
-        # Resets timestamps and events for status_polling_loop
-        self._last_poll_timestamp = 0
-        self._last_timestamp = 0
-        self._poll_notifier = asyncio.Event()
-
-        self.order_book_tracker.stop()
-        if self._status_polling_task is not None:
-            self._status_polling_task.cancel()
-            self._status_polling_task = None
-        if self._trading_rules_polling_task is not None:
-            self._trading_rules_polling_task.cancel()
-            self._trading_rules_polling_task = None
-        if self._trading_fees_polling_task is not None:
-            self._trading_fees_polling_task.cancel()
-            self._trading_fees_polling_task = None
-        if self._user_stream_tracker_task is not None:
-            self._user_stream_tracker_task.cancel()
-            self._user_stream_tracker_task = None
-        if self._user_stream_event_listener_task is not None:
-            self._user_stream_event_listener_task.cancel()
-            self._user_stream_event_listener_task = None
-
-    async def stop_network(self):
-        self._stop_network()
-
-    async def check_network(self) -> NetworkStatus:
-        try:
-            await self._api_request(path_url=CONSTANTS.SERVER_TIME_PATH_URL, method=RESTMethod.GET)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            return NetworkStatus.NOT_CONNECTED
-        return NetworkStatus.CONNECTED
-
-    def tick(self, timestamp: float):
-        """
-        Includes the logic that has to be processed every time a new tick happens in the bot. Particularly it enables
-        the execution of the status update polling loop using an event.
-        """
-        poll_interval = (self.SHORT_POLL_INTERVAL
-                         if timestamp - self._user_stream_tracker.last_recv_time > 60.0
-                         else self.LONG_POLL_INTERVAL)
-        last_tick = int(self._last_timestamp / poll_interval)
-        current_tick = int(timestamp / poll_interval)
-
-        if current_tick > last_tick:
-            self._poll_notifier.set()
-        self._last_timestamp = timestamp
+    @property
+    def is_cancel_request_in_exchange_synchronous(self) -> bool:
+        return True
 
     def supported_order_types(self):
         return [OrderType.MARKET, OrderType.LIMIT, OrderType.LIMIT_MAKER]
@@ -200,108 +139,18 @@ class KucoinExchange(ExchangePyBase):
     def _create_order_book_data_source(self) -> OrderBookTrackerDataSource:
         return KucoinAPIOrderBookDataSource(
             trading_pairs=self._trading_pairs,
-            domain=self.domain,
+            connector=self,
             api_factory=self._web_assistants_factory,
-            throttler=self._throttler,
-            time_synchronizer=self._time_synchronizer,
+            domain=self.domain,
         )
 
-        safe_ensure_future(self._create_order(
-            trade_type=TradeType.SELL,
-            order_id=order_id,
-            trading_pair=trading_pair,
-            amount=amount,
-            order_type=order_type,
-            price=price))
-        return order_id
-
-    def cancel(self, trading_pair: str, order_id: str):
-        """
-        Creates a promise to cancel an order in the exchange
-
-        :param trading_pair: the trading pair the order to cancel operates with
-        :param order_id: the client id of the order to cancel
-
-        :return: the client id of the order to cancel
-        """
-        safe_ensure_future(self._execute_cancel(trading_pair, order_id))
-        return order_id
-
-    async def cancel_all(self, timeout_seconds: float) -> List[CancellationResult]:
-        """
-        Cancels all currently active orders. The cancellations are performed in parallel tasks.
-
-        :param timeout_seconds: the maximum time (in seconds) the cancel logic should run
-
-        :return: a list of CancellationResult instances, one for each of the orders to be cancelled
-        """
-        incomplete_orders = [o for o in self.in_flight_orders.values() if not o.is_done]
-        tasks = [self._execute_cancel(o.trading_pair, o.client_order_id) for o in incomplete_orders]
-        order_id_set = set([o.client_order_id for o in incomplete_orders])
-        successful_cancellations = []
-
-        try:
-            async with timeout(timeout_seconds):
-                cancellation_results = await safe_gather(*tasks, return_exceptions=True)
-                for cr in cancellation_results:
-                    if isinstance(cr, Exception):
-                        continue
-                    if cr is not None:
-                        client_order_id = cr
-                        order_id_set.remove(client_order_id)
-                        successful_cancellations.append(CancellationResult(client_order_id, True))
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.logger().network(
-                "Unexpected error cancelling orders.",
-                exc_info=True,
-                app_warning_msg="Failed to cancel order. Check API key and network connection."
-            )
-
-        failed_cancellations = [CancellationResult(oid, False) for oid in order_id_set]
-        return successful_cancellations + failed_cancellations
-
-    def get_order_book(self, trading_pair: str) -> OrderBook:
-        """
-        Returns the current order book for a particular market
-
-        :param trading_pair: the pair of tokens for which the order book should be retrieved
-        """
-        if trading_pair not in self.order_book_tracker.order_books:
-            raise ValueError(f"No order book exists for '{trading_pair}'.")
-        return self.order_book_tracker.order_books[trading_pair]
-
-    def start_tracking_order(self,
-                             order_id: str,
-                             exchange_order_id: Optional[str],
-                             trading_pair: str,
-                             trade_type: TradeType,
-                             price: Decimal,
-                             amount: Decimal,
-                             order_type: OrderType):
-        """
-        Starts tracking an order by adding it to the order tracker.
-
-        :param order_id: the order identifier
-        :param exchange_order_id: the identifier for the order in the exchange
-        :param trading_pair: the token pair for the operation
-        :param trade_type: the type of order (buy or sell)
-        :param price: the price for the order
-        :param amount: the amount for the order
-        :param order_type: type of execution for the order (MARKET, LIMIT, LIMIT_MAKER)
-        """
-        self._order_tracker.start_tracking_order(
-            InFlightOrder(
-                client_order_id=order_id,
-                exchange_order_id=exchange_order_id,
-                trading_pair=trading_pair,
-                order_type=order_type,
-                trade_type=trade_type,
-                amount=amount,
-                price=price,
-                creation_timestamp=self.current_timestamp
-            )
+    def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
+        return KucoinAPIUserStreamDataSource(
+            auth=self._auth,
+            trading_pairs=self._trading_pairs,
+            connector=self,
+            api_factory=self._web_assistants_factory,
+            domain=self.domain,
         )
 
     def _get_fee(self,
@@ -331,15 +180,6 @@ class KucoinExchange(ExchangePyBase):
                 price=price,
             )
         return fee
-
-    async def _initialize_trading_pair_symbol_map(self):
-        try:
-            exchange_info = await self._api_request(
-                method=RESTMethod.GET,
-                path_url=CONSTANTS.SYMBOLS_PATH_URL)
-            self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
-        except Exception:
-            self.logger().exception("There was an error requesting exchange info.")
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
         mapping = bidict()
@@ -438,7 +278,7 @@ class KucoinExchange(ExchangePyBase):
                            amount: Decimal,
                            trade_type: TradeType,
                            order_type: OrderType,
-                           price: Decimal) -> (str, float):
+                           price: Decimal) -> Tuple[str, float]:
         path_url = CONSTANTS.ORDERS_PATH_URL
         side = trade_type.name.lower()
         order_type_str = "market" if order_type == OrderType.MARKET else "limit"
@@ -462,8 +302,9 @@ class KucoinExchange(ExchangePyBase):
         )
         return str(exchange_order_id["data"]["orderId"]), self.current_timestamp
 
-    async def _place_cancel(self, order_id, tracked_order):
-        """ This implementation specific function is called by _cancel, and returns True if successful
+    async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
+        """
+        This implementation specific function is called by _cancel, and returns True if successful
         """
         exchange_order_id = await tracked_order.get_exchange_order_id()
         cancel_result = await self._api_delete(

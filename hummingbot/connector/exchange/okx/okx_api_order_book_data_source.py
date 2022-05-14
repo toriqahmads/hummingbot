@@ -1,10 +1,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 
-from hummingbot.connector.exchange.okex import constants as CONSTANTS, okex_utils, okex_web_utils as web_utils
-from hummingbot.connector.time_synchronizer import TimeSynchronizer
-from hummingbot.connector.utils import combine_to_hb_trading_pair
-from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
+from hummingbot.connector.exchange.okx import okx_constants as CONSTANTS, okx_web_utils as web_utils
 from hummingbot.core.data_type.common import TradeType
 from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
@@ -13,16 +10,18 @@ from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFa
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
+if TYPE_CHECKING:
+    from hummingbot.connector.exchange.okx.okx_exchange import OkxExchange
 
-class OkexAPIOrderBookDataSource(OrderBookTrackerDataSource):
+
+class OkxAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     _logger: Optional[HummingbotLogger] = None
 
     def __init__(self,
                  trading_pairs: List[str],
-                 api_factory: Optional[WebAssistantsFactory] = None,
-                 throttler: Optional[AsyncThrottler] = None,
-                 time_synchronizer: Optional[TimeSynchronizer] = None):
+                 connector: 'OkxExchange',
+                 api_factory: WebAssistantsFactory):
         super().__init__(trading_pairs)
         self._time_synchronizer = time_synchronizer
         self._throttler = throttler
@@ -140,10 +139,10 @@ class OkexAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
         rest_assistant = await self._api_factory.get_rest_assistant()
         data = await rest_assistant.execute_request(
-            url=web_utils.rest_url(path_url=CONSTANTS.OKEX_ORDER_BOOK_PATH),
+            url=web_utils.public_rest_url(path_url=CONSTANTS.OKX_ORDER_BOOK_PATH),
             params=params,
             method=RESTMethod.GET,
-            throttler_limit_id=CONSTANTS.OKEX_ORDER_BOOK_PATH,
+            throttler_limit_id=CONSTANTS.OKX_ORDER_BOOK_PATH,
         )
 
         return data
@@ -246,9 +245,9 @@ class OkexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         channel = ""
         if "data" in event_message:
             event_channel = event_message["arg"]["channel"]
-            if event_channel == CONSTANTS.OKEX_WS_PUBLIC_TRADES_CHANNEL:
+            if event_channel == CONSTANTS.OKX_WS_PUBLIC_TRADES_CHANNEL:
                 channel = self._trade_messages_queue_key
-            if event_channel == CONSTANTS.OKEX_WS_PUBLIC_BOOKS_CHANNEL and event_message["action"] == "update":
+            if event_channel == CONSTANTS.OKX_WS_PUBLIC_BOOKS_CHANNEL and event_message["action"] == "update":
                 channel = self._diff_messages_queue_key
 
         return channel
@@ -265,6 +264,6 @@ class OkexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         ws: WSAssistant = await self._api_factory.get_ws_assistant()
         async with self._throttler.execute_task(limit_id=CONSTANTS.WS_CONNECTION_LIMIT_ID):
             await ws.connect(
-                ws_url=CONSTANTS.OKEX_WS_URI_PUBLIC,
+                ws_url=CONSTANTS.OKX_WS_URI_PUBLIC,
                 message_timeout=CONSTANTS.SECONDS_TO_WAIT_TO_RECEIVE_MESSAGE)
         return ws

@@ -45,7 +45,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
         self.ob_data_source = KucoinAPIOrderBookDataSource(
             trading_pairs=[self.trading_pair],
             connector=self.connector,
-            api_factory=self.connector._api_factory)
+            api_factory=self.connector._web_assistants_factory)
 
         self.ob_data_source.logger().setLevel(1)
         self.ob_data_source.logger().addHandler(self)
@@ -183,7 +183,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
 
     @aioresponses()
     def test_get_new_order_book(self, mock_api):
-        url = web_utils.rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         resp = self.get_snapshot_mock()
         mock_api.get(regex_url, body=json.dumps(resp))
@@ -205,7 +205,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
     @patch("hummingbot.connector.exchange.kucoin.kucoin_web_utils.next_message_id")
     def test_listen_for_subscriptions_subscribes_to_trades_and_order_diffs(self, mock_api, id_mock, ws_connect_mock):
         id_mock.side_effect = [1, 2]
-        url = web_utils.rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
 
         resp = {
             "code": "200000",
@@ -285,7 +285,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
 
         id_mock.side_effect = [1, 2, 3, 4]
         time_mock.side_effect = [1000, 1100, 1101, 1102]  # Simulate first ping interval is already due
-        url = web_utils.rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
 
         resp = {
             "code": "200000",
@@ -339,7 +339,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     @patch("hummingbot.core.data_type.order_book_tracker_data_source.OrderBookTrackerDataSource._sleep")
     def test_listen_for_subscriptions_raises_cancel_exception(self, mock_api, _, ws_connect_mock):
-        url = web_utils.rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
 
         resp = {
             "code": "200000",
@@ -368,7 +368,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     @patch("hummingbot.core.data_type.order_book_tracker_data_source.OrderBookTrackerDataSource._sleep")
     def test_listen_for_subscriptions_logs_exception_details(self, mock_api, sleep_mock, ws_connect_mock):
-        url = web_utils.rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.PUBLIC_WS_DATA_PATH_URL)
 
         resp = {
             "code": "200000",
@@ -541,7 +541,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
 
     @aioresponses()
     def test_listen_for_order_book_snapshots_cancelled_when_fetching_snapshot(self, mock_api):
-        url = web_utils.rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, exception=asyncio.CancelledError)
@@ -558,7 +558,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
         msg_queue: asyncio.Queue = asyncio.Queue()
         sleep_mock.side_effect = asyncio.CancelledError
 
-        url = web_utils.rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, exception=Exception)
@@ -574,7 +574,7 @@ class TestKucoinAPIOrderBookDataSource(unittest.TestCase):
     @aioresponses()
     def test_listen_for_order_book_snapshots_successful(self, mock_api, ):
         msg_queue: asyncio.Queue = asyncio.Queue()
-        url = web_utils.rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_NO_AUTH_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         snapshot_data = {

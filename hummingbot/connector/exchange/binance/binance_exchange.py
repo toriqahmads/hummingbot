@@ -1,6 +1,8 @@
 import asyncio
 from decimal import Decimal
-from typing import Any, AsyncIterable, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from bidict import bidict
 
 from async_timeout import timeout
 from bidict import bidict
@@ -15,9 +17,7 @@ from hummingbot.connector.exchange.binance.binance_api_user_stream_data_source i
 from hummingbot.connector.exchange.binance.binance_auth import BinanceAuth
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.connector.utils import get_new_client_order_id, TradeFillOrderDetails
-from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
-from hummingbot.core.data_type.cancellation_result import CancellationResult
+from hummingbot.connector.utils import TradeFillOrderDetails, combine_to_hb_trading_pair
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
@@ -129,8 +129,20 @@ class BinanceExchange(ExchangePyBase):
         }
 
     @property
+    def trading_pairs_request_path(self):
+        return CONSTANTS.EXCHANGE_INFO_PATH_URL
+
+    @property
     def check_network_request_path(self):
         return CONSTANTS.PING_PATH_URL
+
+    @property
+    def trading_pairs(self):
+        return self._trading_pairs
+
+    @property
+    def is_cancel_request_in_exchange_synchronous(self) -> bool:
+        return True
 
     def supported_order_types(self):
         return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
@@ -255,10 +267,9 @@ class BinanceExchange(ExchangePyBase):
         return BinanceAPIUserStreamDataSource(
             auth=self._auth,
             trading_pairs=self._trading_pairs,
-            domain=self.domain,
+            connector=self,
             api_factory=self._web_assistants_factory,
-            throttler=self._throttler,
-            time_synchronizer=self._time_synchronizer,
+            domain=self.domain,
         )
 
     def _get_fee(self,
@@ -272,143 +283,13 @@ class BinanceExchange(ExchangePyBase):
         is_maker = order_type is OrderType.LIMIT_MAKER
         return DeductedFromReturnsTradeFee(percent=self.estimate_fee_pct(is_maker))
 
-    def buy(self, trading_pair: str, amount: Decimal, order_type: OrderType = OrderType.LIMIT,
-            price: Decimal = s_decimal_NaN, **kwargs) -> str:
-        """
-        Creates a promise to create a buy order using the parameters.
-        :param trading_pair: the token pair to operate with
-        :param amount: the order amount
-        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
-        :param price: the order price
-        :return: the id assigned by the connector to the order (the client id)
-        """
-        client_order_id = get_new_client_order_id(
-            is_buy=True,
-            trading_pair=trading_pair,
-            hbot_order_id_prefix=CONSTANTS.HBOT_ORDER_ID_PREFIX,
-            max_id_len=CONSTANTS.MAX_ORDER_ID_LEN,
-        )
-        safe_ensure_future(self._create_order(TradeType.BUY, client_order_id, trading_pair, amount, order_type, price))
-        return client_order_id
-
-    def sell(self, trading_pair: str, amount: Decimal, order_type: OrderType = OrderType.MARKET,
-             price: Decimal = s_decimal_NaN, **kwargs) -> str:
-        """
-        Creates a promise to create a sell order using the parameters.
-        :param trading_pair: the token pair to operate with
-        :param amount: the order amount
-        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
-        :param price: the order price
-        :return: the id assigned by the connector to the order (the client id)
-        """
-        client_order_id = get_new_client_order_id(
-            is_buy=False,
-            trading_pair=trading_pair,
-            hbot_order_id_prefix=CONSTANTS.HBOT_ORDER_ID_PREFIX,
-            max_id_len=CONSTANTS.MAX_ORDER_ID_LEN,
-        )
-        safe_ensure_future(self._create_order(TradeType.SELL, client_order_id, trading_pair, amount, order_type, price))
-        return client_order_id
-
-    def cancel(self, trading_pair: str, order_id: str):
-        """
-        Creates a promise to cancel an order in the exchange
-        :param trading_pair: the trading pair the order to cancel operates with
-        :param order_id: the client id of the order to cancel
-        :return: the client id of the order to cancel
-        """
-        safe_ensure_future(self._execute_cancel(trading_pair, order_id))
-        return order_id
-
-    async def cancel_all(self, timeout_seconds: float) -> List[CancellationResult]:
-        """
-        Cancels all currently active orders. The cancellations are performed in parallel tasks.
-        :param timeout_seconds: the maximum time (in seconds) the cancel logic should run
-        :return: a list of CancellationResult instances, one for each of the orders to be cancelled
-        """
-        incomplete_orders = [o for o in self.in_flight_orders.values() if not o.is_done]
-        tasks = [self._execute_cancel(o.trading_pair, o.client_order_id) for o in incomplete_orders]
-        order_id_set = set([o.client_order_id for o in incomplete_orders])
-        successful_cancellations = []
-
-        try:
-            async with timeout(timeout_seconds):
-                cancellation_results = await safe_gather(*tasks, return_exceptions=True)
-                for cr in cancellation_results:
-                    if isinstance(cr, Exception):
-                        continue
-                    if isinstance(cr, dict) and "origClientOrderId" in cr:
-                        client_order_id = cr.get("origClientOrderId")
-                        order_id_set.remove(client_order_id)
-                        successful_cancellations.append(CancellationResult(client_order_id, True))
-        except Exception:
-            self.logger().network(
-                "Unexpected error cancelling orders.",
-                exc_info=True,
-                app_warning_msg="Failed to cancel order with Binance. Check API key and network connection."
-            )
-
-        failed_cancellations = [CancellationResult(oid, False) for oid in order_id_set]
-        return successful_cancellations + failed_cancellations
-
-    async def _initialize_trading_pair_symbol_map(self):
-        try:
-            exchange_info = await self._api_request(
-                method=RESTMethod.GET,
-                path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL)
-            self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
-        except Exception:
-            self.logger().exception("There was an error requesting exchange info.")
-
-    def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
-        mapping = bidict()
-        for symbol_data in filter(binance_utils.is_exchange_information_valid, exchange_info["symbols"]):
-            mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["baseAsset"],
-                                                                        quote=symbol_data["quoteAsset"])
-        self._set_trading_pair_symbol_map(mapping)
-
-    async def _create_order(self,
-                            trade_type: TradeType,
-                            order_id: str,
-                            trading_pair: str,
-                            amount: Decimal,
-                            order_type: OrderType,
-                            price: Optional[Decimal] = Decimal("NaN")):
-        """
-        Creates a an order in the exchange using the parameters to configure it
-        :param trade_type: the side of the order (BUY of SELL)
-        :param order_id: the id that should be assigned to the order (the client id)
-        :param trading_pair: the token pair to operate with
-        :param amount: the order amount
-        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
-        :param price: the order price
-        """
-        trading_rule: TradingRule = self._trading_rules[trading_pair]
-        price = self.quantize_order_price(trading_pair, price)
-        quantize_amount_price = Decimal("0") if price.is_nan() else price
-        amount = self.quantize_order_amount(trading_pair=trading_pair, amount=amount, price=quantize_amount_price)
-
-        self.start_tracking_order(
-            order_id=order_id,
-            exchange_order_id=None,
-            trading_pair=trading_pair,
-            trade_type=trade_type,
-            price=price,
-            amount=amount,
-            order_type=order_type)
-
-        if amount < trading_rule.min_order_size:
-            self.logger().warning(f"{trade_type.name.title()} order amount {amount} is lower than the minimum order"
-                                  f" size {trading_rule.min_order_size}. The order will not be created.")
-            order_update: OrderUpdate = OrderUpdate(
-                client_order_id=order_id,
-                trading_pair=trading_pair,
-                update_timestamp=self.current_timestamp,
-                new_state=OrderState.FAILED,
-            )
-            self._order_tracker.process_order_update(order_update)
-            return
-
+    async def _place_order(self,
+                           order_id: str,
+                           trading_pair: str,
+                           amount: Decimal,
+                           trade_type: TradeType,
+                           order_type: OrderType,
+                           price: Decimal) -> Tuple[str, float]:
         order_result = None
         amount_str = f"{amount:f}"
         price_str = f"{price:f}"
@@ -705,7 +586,7 @@ class BinanceExchange(ExchangePyBase):
                 order_by_exchange_id_map[order.exchange_order_id] = order
 
             tasks = []
-            trading_pairs = self.order_book_tracker._trading_pairs
+            trading_pairs = self.trading_pairs
             for trading_pair in trading_pairs:
                 params = {
                     "symbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
@@ -848,19 +729,12 @@ class BinanceExchange(ExchangePyBase):
             del self._account_available_balances[asset_name]
             del self._account_balances[asset_name]
 
-    async def _update_time_synchronizer(self):
-        try:
-            await self._binance_time_synchronizer.update_server_time_offset_with_time_provider(
-                time_provider=web_utils.get_current_server_time(
-                    throttler=self._throttler,
-                    domain=self._domain,
-                )
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.logger().exception("Error requesting time from Binance server")
-            raise
+    def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
+        mapping = bidict()
+        for symbol_data in filter(binance_utils.is_exchange_information_valid, exchange_info["symbols"]):
+            mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["baseAsset"],
+                                                                        quote=symbol_data["quoteAsset"])
+        self._set_trading_pair_symbol_map(mapping)
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
         params = {

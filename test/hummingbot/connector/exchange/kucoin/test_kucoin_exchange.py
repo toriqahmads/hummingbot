@@ -156,7 +156,7 @@ class KucoinExchangeTests(unittest.TestCase):
     @aioresponses()
     def test_all_trading_pairs(self, mock_api):
         self.exchange._set_trading_pair_symbol_map(None)
-        url = web_utils.rest_url(path_url=CONSTANTS.SYMBOLS_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.SYMBOLS_PATH_URL)
 
         resp = {
             "data": [
@@ -188,7 +188,7 @@ class KucoinExchangeTests(unittest.TestCase):
     def test_all_trading_pairs_does_not_raise_exception(self, mock_api):
         self.exchange._set_trading_pair_symbol_map(None)
 
-        url = web_utils.rest_url(path_url=CONSTANTS.SYMBOLS_PATH_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.SYMBOLS_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, exception=Exception)
@@ -203,7 +203,7 @@ class KucoinExchangeTests(unittest.TestCase):
         map["TKN1-TKN2"] = "TKN1-TKN2"
         self.exchange._set_trading_pair_symbol_map(map)
 
-        url1 = web_utils.rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL, domain=CONSTANTS.DEFAULT_DOMAIN)
+        url1 = web_utils.public_rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL, domain=CONSTANTS.DEFAULT_DOMAIN)
         url1 = f"{url1}?symbol={self.trading_pair}"
         regex_url = re.compile(f"^{url1}".replace(".", r"\.").replace("?", r"\?"))
         resp = {
@@ -221,7 +221,7 @@ class KucoinExchangeTests(unittest.TestCase):
         }
         mock_api.get(regex_url, body=json.dumps(resp))
 
-        url2 = web_utils.rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL, domain=CONSTANTS.DEFAULT_DOMAIN)
+        url2 = web_utils.public_rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL, domain=CONSTANTS.DEFAULT_DOMAIN)
         url2 = f"{url2}?symbol=TKN1-TKN2"
         regex_url = re.compile(f"^{url2}".replace(".", r"\.").replace("?", r"\?"))
         resp = {
@@ -262,7 +262,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
     @aioresponses()
     def test_check_network_success(self, mock_api):
-        url = web_utils.rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
         resp = {
             "code": "200000",
             "msg": "success",
@@ -276,7 +276,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
     @aioresponses()
     def test_check_network_failure(self, mock_api):
-        url = web_utils.rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
         mock_api.get(url, status=500)
 
         ret = self.async_run_with_timeout(coroutine=self.exchange.check_network())
@@ -285,7 +285,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
     @aioresponses()
     def test_check_network_raises_cancel_exception(self, mock_api):
-        url = web_utils.rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
 
         mock_api.get(url, exception=asyncio.CancelledError)
 
@@ -295,7 +295,7 @@ class KucoinExchangeTests(unittest.TestCase):
     def test_update_trading_rules(self, mock_api):
         self.exchange._set_current_timestamp(1000)
 
-        url = web_utils.rest_url(CONSTANTS.SYMBOLS_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SYMBOLS_PATH_URL)
         resp = self.get_exchange_rules_mock()
         mock_api.get(url, body=json.dumps(resp))
 
@@ -307,7 +307,7 @@ class KucoinExchangeTests(unittest.TestCase):
     def test_update_trading_rules_ignores_rule_with_error(self, mock_api):
         self.exchange._set_current_timestamp(1000)
 
-        url = web_utils.rest_url(CONSTANTS.SYMBOLS_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SYMBOLS_PATH_URL)
         resp = {
             "code": "200000",
             "data": [
@@ -331,7 +331,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
     @aioresponses()
     def test_get_fee_returns_fee_from_exchange_if_available_and_default_if_not(self, mocked_api):
-        url = web_utils.rest_url(CONSTANTS.FEE_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.FEE_PATH_URL)
         regex_url = re.compile(f"^{url}")
         resp = {"data": [
             {"symbol": self.trading_pair,
@@ -451,7 +451,7 @@ class KucoinExchangeTests(unittest.TestCase):
         self._simulate_trading_rules_initialized()
         request_sent_event = asyncio.Event()
         self.exchange._set_current_timestamp(1640780000)
-        url = web_utils.rest_url(CONSTANTS.ORDERS_PATH_URL)
+        url = web_utils.private_rest_url(CONSTANTS.ORDERS_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         creation_response = {
@@ -505,7 +505,7 @@ class KucoinExchangeTests(unittest.TestCase):
         self._simulate_trading_rules_initialized()
         request_sent_event = asyncio.Event()
         self.exchange._set_current_timestamp(1640780000)
-        url = web_utils.rest_url(CONSTANTS.ORDERS_PATH_URL)
+        url = web_utils.private_rest_url(CONSTANTS.ORDERS_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         creation_response = {
@@ -562,7 +562,7 @@ class KucoinExchangeTests(unittest.TestCase):
         self._simulate_trading_rules_initialized()
         request_sent_event = asyncio.Event()
         self.exchange._set_current_timestamp(1640780000)
-        url = web_utils.rest_url(CONSTANTS.ORDERS_PATH_URL)
+        url = web_utils.private_rest_url(CONSTANTS.ORDERS_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         creation_response = {
@@ -615,7 +615,7 @@ class KucoinExchangeTests(unittest.TestCase):
         self._simulate_trading_rules_initialized()
         request_sent_event = asyncio.Event()
         self.exchange._set_current_timestamp(1640780000)
-        url = web_utils.rest_url(CONSTANTS.ORDERS_PATH_URL)
+        url = web_utils.private_rest_url(CONSTANTS.ORDERS_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.post(regex_url,
@@ -657,7 +657,7 @@ class KucoinExchangeTests(unittest.TestCase):
         request_sent_event = asyncio.Event()
         self.exchange._set_current_timestamp(1640780000)
 
-        url = web_utils.rest_url(CONSTANTS.ORDERS_PATH_URL)
+        url = web_utils.private_rest_url(CONSTANTS.ORDERS_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.post(regex_url,
@@ -722,7 +722,7 @@ class KucoinExchangeTests(unittest.TestCase):
         self.assertIn("OID1", self.exchange.in_flight_orders)
         order = self.exchange.in_flight_orders["OID1"]
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         response = {
@@ -771,7 +771,7 @@ class KucoinExchangeTests(unittest.TestCase):
         self.assertIn("OID1", self.exchange.in_flight_orders)
         order = self.exchange.in_flight_orders["OID1"]
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.delete(regex_url,
@@ -874,7 +874,7 @@ class KucoinExchangeTests(unittest.TestCase):
         self.assertIn("OID2", self.exchange.in_flight_orders)
         order2 = self.exchange.in_flight_orders["OID2"]
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order1.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order1.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         response = {
@@ -883,7 +883,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
         mock_api.delete(regex_url, body=json.dumps(response))
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order2.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order2.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.delete(regex_url, status=400)
@@ -912,7 +912,7 @@ class KucoinExchangeTests(unittest.TestCase):
         seconds_counter_mock.side_effect = [0, 0, 0]
 
         self.exchange._time_synchronizer.clear_time_offset_ms_samples()
-        url = web_utils.rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         response = {
@@ -929,7 +929,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
     @aioresponses()
     def test_update_time_synchronizer_failure_is_logged(self, mock_api):
-        url = web_utils.rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         response = {
@@ -945,7 +945,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
     @aioresponses()
     def test_update_time_synchronizer_raises_cancelled_error(self, mock_api):
-        url = web_utils.rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, exception=asyncio.CancelledError)
@@ -956,7 +956,7 @@ class KucoinExchangeTests(unittest.TestCase):
 
     @aioresponses()
     def test_update_balances(self, mock_api):
-        url = web_utils.rest_url(CONSTANTS.ACCOUNTS_PATH_URL)
+        url = web_utils.private_rest_url(CONSTANTS.ACCOUNTS_PATH_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         response = {
@@ -1030,7 +1030,7 @@ class KucoinExchangeTests(unittest.TestCase):
         )
         order: InFlightOrder = self.exchange.in_flight_orders["OID1"]
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         order_status = {
@@ -1118,7 +1118,7 @@ class KucoinExchangeTests(unittest.TestCase):
         )
         order = self.exchange.in_flight_orders["OID1"]
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         order_status = {
@@ -1192,7 +1192,7 @@ class KucoinExchangeTests(unittest.TestCase):
         )
         order: InFlightOrder = self.exchange.in_flight_orders["OID1"]
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         order_status = {
@@ -1263,7 +1263,7 @@ class KucoinExchangeTests(unittest.TestCase):
         )
         order: InFlightOrder = self.exchange.in_flight_orders["OID1"]
 
-        url = web_utils.rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
+        url = web_utils.private_rest_url(f"{CONSTANTS.ORDERS_PATH_URL}/{order.exchange_order_id}")
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, status=404)

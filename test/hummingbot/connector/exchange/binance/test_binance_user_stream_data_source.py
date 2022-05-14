@@ -13,6 +13,7 @@ from hummingbot.connector.exchange.binance import (
 )
 from hummingbot.connector.exchange.binance.binance_api_user_stream_data_source import BinanceAPIUserStreamDataSource
 from hummingbot.connector.exchange.binance.binance_auth import BinanceAuth
+from hummingbot.connector.exchange.binance.binance_exchange import BinanceExchange
 from hummingbot.connector.time_synchronizer import TimeSynchronizer
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 
@@ -46,14 +47,19 @@ class BinanceUserStreamDataSourceUnitTests(unittest.TestCase):
         self.time_synchronizer = TimeSynchronizer()
         self.time_synchronizer.add_time_offset_ms_sample(0)
 
-        self.api_factory = web_utils.build_api_factory(
-            throttler=self.throttler,
-            time_synchronizer=self.time_synchronizer,
-            auth=self.auth)
+        self.connector = BinanceExchange(
+            binance_api_key="",
+            binance_api_secret="",
+            trading_pairs=[],
+            trading_required=False,
+            domain=self.domain)
+        self.connector._web_assistants_factory._auth = self.auth
 
         self.data_source = BinanceAPIUserStreamDataSource(
             auth=self.auth,
-            api_factory=self.api_factory,
+            trading_pairs=[self.trading_pair],
+            connector=self.connector,
+            api_factory=self.connector._web_assistants_factory,
             domain=self.domain
         )
 
