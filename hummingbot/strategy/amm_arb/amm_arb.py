@@ -163,7 +163,7 @@ class AmmArbStrategy(StrategyPyBase):
         """
         if not self._all_markets_ready:
             self._all_markets_ready = all([market.ready for market in self.active_markets])
-            if not self._all_markets_ready:
+            if not self._all_markets_ready and int(timestamp) % 10 == 0:
                 unready_markets = ', '.join([market.name for market in self.active_markets if market.ready is False])
                 self.logger().warning(f"Markets are not ready ({unready_markets}). Please wait...")
                 return
