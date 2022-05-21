@@ -399,14 +399,7 @@ class AmmArbUnitTest(unittest.TestCase):
         cancel_outdated_orders_func.assert_awaited()
 
     @async_test(loop=ev_loop)
-    async def test_set_order_failed(self):
-        self.amm_1.set_prices(TRADING_PAIR, True, 101)
-        self.amm_1.set_prices(TRADING_PAIR, False, 100)
-        self.amm_2.set_prices(TRADING_PAIR, True, 105)
-        self.amm_2.set_prices(TRADING_PAIR, False, 104)
-        self.amm_1.network_transaction_fee = TokenAmount("ETH", Decimal("0.0002"))
-        await asyncio.sleep(2)
-        new_amm_1_order = [order for market, order in self.strategy.tracked_limit_orders if market == self.amm_1][0]
-        self.assertEqual(2, len(self.strategy.tracked_limit_orders))
-        self.strategy.set_order_failed(new_amm_1_order.client_order_id)
-        self.assertEqual(2, len(self.strategy.tracked_limit_orders))
+    @unittest.mock.patch("hummingbot.strategy.amm_arb.amm_arb.AmmArbStrategy.all_markets_ready", return_value=False)
+    async def test_market_ready(self, patched_func: unittest.mock.AsyncMock):
+        self.strategy.tick(10)
+        self.assertFalse(self.strategy._all_markets_ready)
