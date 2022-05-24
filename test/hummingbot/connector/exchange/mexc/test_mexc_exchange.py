@@ -17,6 +17,7 @@ import hummingbot.connector.exchange.mexc.mexc_constants as CONSTANTS
 from hummingbot.connector.exchange.mexc.mexc_exchange import MexcExchange
 from hummingbot.connector.exchange.mexc.mexc_in_flight_order import MexcInFlightOrder
 from hummingbot.connector.exchange.mexc.mexc_order_book import MexcOrderBook
+from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.event.events import OrderCancelledEvent, SellOrderCompletedEvent
