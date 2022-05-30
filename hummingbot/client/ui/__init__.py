@@ -4,8 +4,6 @@ from os.path import dirname, join, realpath
 from prompt_toolkit.shortcuts import input_dialog, message_dialog
 from prompt_toolkit.styles import Style
 
-from hummingbot.client.ui.style import load_style
-
 sys.path.insert(0, realpath(join(__file__, "../../../")))
 
 with open(realpath(join(dirname(__file__), '../../VERSION'))) as version_file:
@@ -119,5 +117,5 @@ def login_prompt(style: Style):
             title='Error',
             text=err_msg,
             style=style).run()
-        return login_prompt(style=load_style())
+        return login_prompt(style)
     return True
