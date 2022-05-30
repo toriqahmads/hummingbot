@@ -49,6 +49,7 @@ class LoginPromptTest(unittest.TestCase):
         run_mock.run.return_value = "somePassword"
         input_dialog_mock.return_value = run_mock
         message_dialog_mock.return_value = run_mock
+        login_mock.return_value = None
         login_mock.side_effect = [False, True]
 
         self.assertTrue(login_prompt(style=load_style()))
