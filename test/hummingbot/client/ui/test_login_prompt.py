@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 
 from hummingbot.client.config.config_helpers import read_system_configs_from_yml
 from hummingbot.client.config.global_config_map import global_config_map
-from hummingbot.client.ui import load_style, login_prompt
+from hummingbot.client.ui import login_prompt
+from hummingbot.client.ui.style import load_style
 
 
 class LoginPromptTest(unittest.TestCase):
