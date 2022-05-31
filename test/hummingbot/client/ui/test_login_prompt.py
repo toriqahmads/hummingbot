@@ -28,16 +28,16 @@ class LoginPromptTest(unittest.TestCase):
         for key, value in self.global_config_backup.items():
             global_config_map[key] = value
 
-    # @patch("hummingbot.client.ui.input_dialog")
-    # @patch("hummingbot.client.config.security.Security.login")
-    # def test_login_success(self, login_mock: MagicMock, input_dialog_mock: MagicMock):
-    #     run_mock = MagicMock()
-    #     run_mock.run.return_value = "somePassword"
-    #     input_dialog_mock.return_value = run_mock
-    #     login_mock.return_value = True
-    #
-    #     self.assertTrue(login_prompt(style=load_style()))
-    #     self.assertEqual(len(login_mock.mock_calls), 1)
+    @patch("hummingbot.client.ui.input_dialog")
+    @patch("hummingbot.client.config.security.Security.login")
+    def test_login_success(self, login_mock: MagicMock, input_dialog_mock: MagicMock):
+        run_mock = MagicMock()
+        run_mock.run.return_value = "somePassword"
+        input_dialog_mock.return_value = run_mock
+        login_mock.return_value = True
+
+        self.assertTrue(login_prompt(style=load_style()))
+        self.assertEqual(len(login_mock.mock_calls), 1)
 
     @patch("hummingbot.client.ui.message_dialog")
     @patch("hummingbot.client.ui.input_dialog")
@@ -49,8 +49,7 @@ class LoginPromptTest(unittest.TestCase):
         run_mock.run.return_value = "somePassword"
         input_dialog_mock.return_value = run_mock
         message_dialog_mock.return_value = run_mock
-        login_mock.return_value = None
-        login_mock.side_effect = [False, True]
+        login_mock.side_effect = (False, True)
 
         self.assertTrue(login_prompt(style=load_style()))
         self.assertEqual(len(login_mock.mock_calls), 2)
