@@ -17,11 +17,7 @@ from hummingbot.connector.exchange.coinflex.coinflex_web_utils import (
     build_api_factory,
 )
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
-from hummingbot.core.web_assistant.connections.data_types import (
-    RESTMethod,
-    RESTResponse,
-    WSJSONRequest,
-)
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTResponse, WSJSONRequest
 from hummingbot.logger.struct_logger import METRICS_LOG_LEVEL
 
 sys.path.insert(0, realpath(join(__file__, "../../../../../")))
