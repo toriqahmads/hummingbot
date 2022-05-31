@@ -49,16 +49,8 @@ class LoginPromptTest(unittest.TestCase):
         run_mock.run.return_value = "somePassword"
         input_dialog_mock.return_value = run_mock
         message_dialog_mock.return_value = run_mock
-
-        bool_ = False
-
-        def flase_than_true(*args, **kwargs):
-            nonlocal bool_
-            ret = bool_
-            bool_ = True
-            return ret
-
-        login_mock.side_effect = flase_than_true
+        login_mock.side_effect = [False, True]
 
         self.assertTrue(login_prompt(style=load_style()))
-        self.assertEqual(len(login_mock.mock_calls), 2)
+        login_mock.assert_called()
+        message_dialog_mock.assert_called()
