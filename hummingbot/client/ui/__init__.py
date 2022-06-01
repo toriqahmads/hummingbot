@@ -103,19 +103,27 @@ def login_prompt(style: Style):
             dummy = f"{time.time()}"
             Security.update_secure_config("default", dummy)
     else:
+        print("1")
         password = input_dialog(
             title="Welcome back to Hummingbot",
             text="Enter your password:",
             password=True,
             style=style).run()
+        print("2")
         if password is None:
+            print("3")
             return False
         if not Security.login(password):
+            print("4")
             err_msg = "Invalid password - please try again."
+        print("5")
     if err_msg is not None:
+        print("6")
         message_dialog(
             title='Error',
             text=err_msg,
             style=style).run()
+        print("7")
         return login_prompt(style)
+    print("8")
     return True
