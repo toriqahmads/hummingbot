@@ -31,22 +31,36 @@ class LoginPromptTest(unittest.TestCase):
     @patch("hummingbot.client.ui.message_dialog")
     @patch("hummingbot.client.ui.input_dialog")
     @patch("hummingbot.client.config.security.Security.login")
-    def test_login_success(self, login_mock: MagicMock, input_dialog_mock: MagicMock, message_dialog_mock: MagicMock):
+    @patch("hummingbot.client.config.security.Security.new_password_required")
+    def test_login_success(
+        self,
+        new_password_required_mock: MagicMock,
+        login_mock: MagicMock,
+        input_dialog_mock: MagicMock,
+        message_dialog_mock: MagicMock,
+    ):
+        new_password_required_mock.return_value = False
         run_mock = MagicMock()
         run_mock.run.return_value = "somePassword"
         input_dialog_mock.return_value = run_mock
         login_mock.return_value = True
 
         self.assertTrue(login_prompt(style=load_style()))
-        login_mock.assert_called()
+        self.assertEqual(1, len(login_mock.mock_calls))
         message_dialog_mock.assert_not_called()
 
     @patch("hummingbot.client.ui.message_dialog")
     @patch("hummingbot.client.ui.input_dialog")
     @patch("hummingbot.client.config.security.Security.login")
+    @patch("hummingbot.client.config.security.Security.new_password_required")
     def test_login_error_retries(
-        self, login_mock: MagicMock, input_dialog_mock: MagicMock, message_dialog_mock: MagicMock
+        self,
+        new_password_required_mock: MagicMock,
+        login_mock: MagicMock,
+        input_dialog_mock: MagicMock,
+        message_dialog_mock: MagicMock,
     ):
+        new_password_required_mock.return_value = False
         run_mock = MagicMock()
         run_mock.run.return_value = "somePassword"
         input_dialog_mock.return_value = run_mock
@@ -54,6 +68,5 @@ class LoginPromptTest(unittest.TestCase):
         login_mock.side_effect = [False, True]
 
         self.assertTrue(login_prompt(style=load_style()))
-        login_mock.assert_called()
+        self.assertEqual(2, len(login_mock.mock_calls))
         message_dialog_mock.assert_called()
-        raise Exception
