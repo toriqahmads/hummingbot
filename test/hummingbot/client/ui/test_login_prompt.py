@@ -56,3 +56,4 @@ class LoginPromptTest(unittest.TestCase):
         self.assertTrue(login_prompt(style=load_style()))
         login_mock.assert_called()
         message_dialog_mock.assert_called()
+        raise Exception
