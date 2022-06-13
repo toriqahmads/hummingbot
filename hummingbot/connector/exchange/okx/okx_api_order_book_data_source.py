@@ -30,9 +30,10 @@ class OkxAPIOrderBookDataSource(OrderBookTrackerDataSource):
             time_synchronizer=self._time_synchronizer,
         )
 
-    @classmethod
-    def _default_domain(cls):
-        return ""
+    async def get_last_traded_prices(self,
+                                     trading_pairs: List[str],
+                                     domain: Optional[str] = None) -> Dict[str, float]:
+        return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
 
     @classmethod
     async def _get_last_traded_price(cls,

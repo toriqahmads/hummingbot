@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
@@ -208,12 +208,20 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
     def order_book_create_function(self, func: Callable[[], OrderBook]):
         self._order_book_create_function = func
 
-    async def get_trading_pairs(self) -> List[str]:
+    @abstractmethod
+    async def get_last_traded_prices(self,
+                                     trading_pairs: List[str],
+                                     domain: Optional[str] = None) -> Dict[str, float]:
         """
-        Create an instance of OrderBookMessage of type OrderBookMessageType.TRADE
+        Return a dictionary the trading_pair as key and the current price as value for each trading pair passed as
+        parameter.
+        This method is required by the order book tracker, to get the last traded prices when no new public trades
+        are notified by the exchange.
 
-        :param raw_message: the JSON dictionary of the public trade event
-        :param message_queue: queue where the parsed messages should be stored in
+        :param trading_pairs: list of trading pairs to get the prices for
+        :param domain: which domain we are connecting to
+
+        :return: Dictionary of associations between token pair and its latest price
         """
         raise NotImplementedError
 
@@ -319,28 +327,6 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
                 raise
             except Exception:
                 self.logger().exception("Unexpected error when processing public trade updates from exchange")
-
-    @classmethod
-    async def _get_last_traded_price(cls,
-                                     trading_pair: str,
-                                     api_factory: Optional[WebAssistantsFactory] = None,
-                                     throttler: Optional[AsyncThrottler] = None,
-                                     domain: Optional[str] = None,
-                                     time_synchronizer: Optional[TimeSynchronizer] = None) -> float:
-        raise NotImplementedError
-
-    @classmethod
-    def _default_domain(cls):
-        raise NotImplementedError
-
-    @classmethod
-    async def _exchange_symbols_and_trading_pairs(
-            cls,
-            domain: Optional[str] = None,
-            api_factory: Optional[WebAssistantsFactory] = None,
-            throttler: Optional[AsyncThrottler] = None,
-            time_synchronizer: Optional[TimeSynchronizer] = None) -> Dict[str, str]:
-        raise NotImplementedError
 
     async def _parse_trade_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         """
