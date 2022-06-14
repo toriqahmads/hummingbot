@@ -80,6 +80,11 @@ class BinanceAPIOrderBookDataSource(OrderBookTrackerDataSource):
                                      domain: Optional[str] = None) -> Dict[str, float]:
         return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
 
+    async def get_last_traded_prices(self,
+                                     trading_pairs: List[str],
+                                     domain: Optional[str] = None) -> Dict[str, float]:
+        return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
+
     async def _request_order_book_snapshot(self, trading_pair: str) -> Dict[str, Any]:
         """
         Retrieves a copy of the full order book from the exchange, for a particular trading pair.
@@ -146,78 +151,6 @@ class BinanceAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 exc_info=True
             )
             raise
-
-    @classmethod
-    async def _get_last_traded_price(cls,
-                                     trading_pair: str,
-                                     api_factory: Optional[WebAssistantsFactory] = None,
-                                     throttler: Optional[AsyncThrottler] = None,
-                                     domain: Optional[str] = None,
-                                     time_synchronizer: Optional[TimeSynchronizer] = None) -> float:
-        domain = domain or cls._default_domain()
-        throttler = throttler or web_utils.create_throttler()
-        api_factory = api_factory or web_utils.build_api_factory(
-            throttler=throttler,
-            time_synchronizer=time_synchronizer,
-            domain=domain,
-        )
-        params = {
-            "symbol": await cls.exchange_symbol_associated_to_pair(
-                trading_pair=trading_pair,
-                domain=domain,
-                api_factory=api_factory,
-                throttler=throttler,
-                time_synchronizer=time_synchronizer)
-        }
-
-        rest_assistant = await api_factory.get_rest_assistant()
-        resp_json = await rest_assistant.execute_request(
-            url=web_utils.public_rest_url(path_url=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL, domain=domain),
-            params=params,
-            method=RESTMethod.GET,
-            throttler_limit_id=CONSTANTS.TICKER_PRICE_CHANGE_PATH_URL,
-        )
-
-        return float(resp_json["lastPrice"])
-
-    @classmethod
-    def _default_domain(cls):
-        return CONSTANTS.DEFAULT_DOMAIN
-
-    @classmethod
-    async def _exchange_symbols_and_trading_pairs(
-            cls,
-            domain: Optional[str] = None,
-            api_factory: Optional[WebAssistantsFactory] = None,
-            throttler: Optional[AsyncThrottler] = None,
-            time_synchronizer: Optional[TimeSynchronizer] = None) -> Dict[str, str]:
-        """
-        Initialize mapping of trade symbols in exchange notation to trade symbols in client notation
-        """
-        domain = domain or cls._default_domain()
-        api_factory = api_factory or web_utils.build_api_factory(
-            throttler=throttler,
-            time_synchronizer=time_synchronizer,
-            domain=domain,
-        )
-        mapping = {}
-        rest_assistant = await api_factory.get_rest_assistant()
-
-        try:
-            data = await rest_assistant.execute_request(
-                url=web_utils.public_rest_url(path_url=CONSTANTS.EXCHANGE_INFO_PATH_URL, domain=domain),
-                method=RESTMethod.GET,
-                throttler_limit_id=CONSTANTS.EXCHANGE_INFO_PATH_URL,
-            )
-
-            for symbol_data in filter(binance_utils.is_exchange_information_valid, data["symbols"]):
-                mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["baseAsset"],
-                                                                            quote=symbol_data["quoteAsset"])
-
-        except Exception as ex:
-            cls.logger().error(f"There was an error requesting exchange info ({str(ex)})")
-
-        return mapping
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()

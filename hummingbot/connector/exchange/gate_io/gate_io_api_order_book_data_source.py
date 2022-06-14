@@ -31,9 +31,10 @@ class GateIoAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
         self._message_queue: Dict[str, asyncio.Queue] = defaultdict(asyncio.Queue)
 
-    @classmethod
-    def _default_domain(cls):
-        return CONSTANTS.DEFAULT_DOMAIN
+    async def get_last_traded_prices(self,
+                                     trading_pairs: List[str],
+                                     domain: Optional[str] = None) -> Dict[str, float]:
+        return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
 
     async def get_last_traded_prices(self,
                                      trading_pairs: List[str],

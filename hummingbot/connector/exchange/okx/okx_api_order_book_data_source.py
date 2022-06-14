@@ -67,39 +67,10 @@ class OkxAPIOrderBookDataSource(OrderBookTrackerDataSource):
         ticker_data, *_ = resp_json["data"]
         return float(ticker_data["last"])
 
-    @classmethod
-    async def _exchange_symbols_and_trading_pairs(
-            cls,
-            domain: Optional[str] = None,
-            api_factory: Optional[WebAssistantsFactory] = None,
-            throttler: Optional[AsyncThrottler] = None,
-            time_synchronizer: Optional[TimeSynchronizer] = None) -> Dict[str, str]:
-        """
-        Initialize mapping of trade symbols in exchange notation to trade symbols in client notation
-        """
-        api_factory = api_factory or web_utils.build_api_factory(
-            throttler=throttler,
-            time_synchronizer=time_synchronizer,
-        )
-        mapping = {}
-        rest_assistant = await api_factory.get_rest_assistant()
-
-        try:
-            data = await rest_assistant.execute_request(
-                url=web_utils.rest_url(path_url=CONSTANTS.OKEX_INSTRUMENTS_PATH),
-                params={"instType": "SPOT"},
-                method=RESTMethod.GET,
-                throttler_limit_id=CONSTANTS.OKEX_INSTRUMENTS_PATH,
-            )
-
-            for symbol_data in filter(okex_utils.is_exchange_information_valid, data["data"]):
-                mapping[symbol_data["instId"]] = combine_to_hb_trading_pair(base=symbol_data["baseCcy"],
-                                                                            quote=symbol_data["quoteCcy"])
-
-        except Exception as ex:
-            cls.logger().error(f"There was an error requesting exchange info ({str(ex)})")
-
-        return mapping
+    async def get_last_traded_prices(self,
+                                     trading_pairs: List[str],
+                                     domain: Optional[str] = None) -> Dict[str, float]:
+        return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
 
     async def _order_book_snapshot(self, trading_pair: str) -> OrderBookMessage:
         snapshot_response: Dict[str, Any] = await self._request_order_book_snapshot(trading_pair)
