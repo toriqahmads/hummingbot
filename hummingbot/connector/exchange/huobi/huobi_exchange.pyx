@@ -15,10 +15,9 @@ from libc.stdint cimport int64_t
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
 from hummingbot.connector.exchange.huobi.huobi_api_order_book_data_source import HuobiAPIOrderBookDataSource
+from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source import HuobiAPIUserStreamDataSource
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
 from hummingbot.connector.exchange.huobi.huobi_in_flight_order import HuobiInFlightOrder
-from hummingbot.connector.exchange.huobi.huobi_order_book_tracker import HuobiOrderBookTracker
-from hummingbot.connector.exchange.huobi.huobi_user_stream_tracker import HuobiUserStreamTracker
 from hummingbot.connector.exchange.huobi.huobi_utils import (
     BROKER_ID,
     build_api_factory,
@@ -32,8 +31,12 @@ from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_book cimport OrderBook
+
+from hummingbot.core.data_type.order_book_tracker import OrderBookTracker
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
 from hummingbot.core.data_type.transaction_tracker import TransactionTracker
+
+from hummingbot.core.data_type.user_stream_tracker import UserStreamTracker
 from hummingbot.core.event.events import (
     BuyOrderCompletedEvent,
     BuyOrderCreatedEvent,
@@ -114,10 +117,11 @@ cdef class HuobiExchange(ExchangeBase):
         self._last_poll_timestamp = 0
         self._last_timestamp = 0
         self._api_factory = build_api_factory()
-        self._set_order_book_tracker(HuobiOrderBookTracker(
-            trading_pairs=trading_pairs,
-            api_factory=self._api_factory,
-        ))
+        self._set_order_book_tracker(OrderBookTracker(
+            data_source=HuobiAPIOrderBookDataSource(
+                trading_pairs=trading_pairs,
+                api_factory=self._api_factory),
+            trading_pairs=trading_pairs))
         self._poll_notifier = asyncio.Event()
         self._rest_assistant = None
         self._status_polling_task = None
@@ -127,8 +131,10 @@ cdef class HuobiExchange(ExchangeBase):
         self._tx_tracker = HuobiExchangeTransactionTracker(self)
 
         self._user_stream_event_listener_task = None
-        self._user_stream_tracker = HuobiUserStreamTracker(huobi_auth=self._huobi_auth,
-                                                           api_factory=self._api_factory)
+        self._user_stream_tracker = UserStreamTracker(
+            data_source=HuobiAPIUserStreamDataSource(
+                huobi_auth=self._huobi_auth,
+                api_factory=self._api_factory))
 
     @property
     def name(self) -> str:
@@ -161,7 +167,7 @@ cdef class HuobiExchange(ExchangeBase):
         }
 
     @property
-    def user_stream_tracker(self) -> HuobiUserStreamTracker:
+    def user_stream_tracker(self) -> UserStreamTracker:
         return self._user_stream_tracker
 
     def restore_tracking_states(self, saved_states: Dict[str, Any]):

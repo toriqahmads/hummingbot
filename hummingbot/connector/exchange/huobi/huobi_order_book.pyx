@@ -1,13 +1,9 @@
-import bz2
 import logging
 from typing import (
     Any,
     Optional,
     Dict
 )
-
-import ujson
-from aiokafka import ConsumerRecord
 
 from hummingbot.connector.exchange.huobi.huobi_utils import convert_from_exchange_trading_pair
 from hummingbot.core.data_type.common import TradeType
@@ -65,6 +61,7 @@ cdef class HuobiOrderBook(OrderBook):
                                    msg: Dict[str, Any],
                                    timestamp: Optional[float] = None,
                                    metadata: Optional[Dict] = None) -> OrderBookMessage:
+        # Huobi always sends full snapshots through the websocket
         if metadata:
             msg.update(metadata)
         msg_ts = timestamp or int(msg["tick"]["ts"])
@@ -74,37 +71,4 @@ cdef class HuobiOrderBook(OrderBook):
             "bids": msg["tick"]["bids"],
             "asks": msg["tick"]["asks"]
         }
-        return OrderBookMessage(OrderBookMessageType.DIFF, content, timestamp or msg_ts)
-
-    @classmethod
-    def snapshot_message_from_kafka(cls, record: ConsumerRecord, metadata: Optional[Dict] = None) -> OrderBookMessage:
-        ts = record.timestamp
-        msg = ujson.loads(record.value.decode())
-        if metadata:
-            msg.update(metadata)
-        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
-            "trading_pair": convert_from_exchange_trading_pair(msg["ch"].split(".")[1]),
-            "update_id": ts,
-            "bids": msg["tick"]["bids"],
-            "asks": msg["tick"]["asks"]
-        }, timestamp=ts)
-
-    @classmethod
-    def diff_message_from_kafka(cls, record: ConsumerRecord, metadata: Optional[Dict] = None) -> OrderBookMessage:
-        decompressed = bz2.decompress(record.value)
-        msg = ujson.loads(decompressed)
-        ts = record.timestamp
-        if metadata:
-            msg.update(metadata)
-        return OrderBookMessage(OrderBookMessageType.DIFF, {
-            "trading_pair": convert_from_exchange_trading_pair(msg["s"]),
-            "update_id": ts,
-            "bids": msg["bids"],
-            "asks": msg["asks"]
-        }, timestamp=ts)
-
-    @classmethod
-    def from_snapshot(cls, msg: OrderBookMessage) -> "OrderBook":
-        retval = HuobiOrderBook()
-        retval.apply_snapshot(msg.bids, msg.asks, msg.update_id)
-        return retval
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, content, timestamp or msg_ts)
