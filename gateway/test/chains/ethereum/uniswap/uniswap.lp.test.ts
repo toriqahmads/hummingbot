@@ -71,8 +71,8 @@ const DAI_USDC_POOL = new uniV3.Pool(
 );
 
 beforeAll(async () => {
-  await overrideConfigs.init();
-  await overrideConfigs.updateConfigs();
+  overrideConfigs.init();
+  overrideConfigs.updateConfigs();
 
   ethereum = Ethereum.getInstance('kovan');
   patchEVMNonceManager(ethereum.nonceManager);
@@ -92,7 +92,7 @@ afterEach(() => {
 
 afterAll(async () => {
   await ethereum.close();
-  await overrideConfigs.resetConfigs();
+  overrideConfigs.resetConfigs();
 });
 
 const patchPoolState = () => {
