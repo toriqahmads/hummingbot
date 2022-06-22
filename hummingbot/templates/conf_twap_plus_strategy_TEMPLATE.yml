@@ -1,0 +1,94 @@
+########################################################
+###          Execution strategy config               ###
+########################################################
+
+template_version: 3
+strategy: null
+# The following configuations are only required for the
+# twap rfox strategy
+
+# Connector and token parameters
+connector: null
+trading_pair: null
+
+# Define the price source type
+price_source: null
+
+# In case of an external price source, define a connector
+external_exchange: null
+
+# In case of an external price source, define a trading pair
+external_trading_pair: null
+
+# An external api that returns price (for custom_api pricing source).
+price_source_custom_api: null
+
+# An interval time in second to update the price from custom api (for custom_api pricing source).
+custom_api_update_interval: null
+
+# The price type (mid_price/last_price/last_own_trade_price/best_bid/best_ask).
+price_type: null
+
+# Indicator that will be used for adjusting the order sizes
+price_indicator: null
+
+# Candle size for indicator calculations
+indicator_candle_size: null
+
+# History length used in the RSI
+rsi_length: null
+
+# Total amount to be traded, considering all orders
+target_asset_amount: null
+
+# Minimum size of the Order
+order_amount_min: null
+
+# Maximum size of the Order
+order_amount_max: null
+
+# Distance of order from the selected price type
+order_spread: null
+
+# Nuumber of order levels
+order_levels: 1
+
+# Change in order size between levels
+order_level_amount: 0
+
+# Distance between levels as a % of the mid price
+order_level_spread: 0
+
+# Minimum price below which the strategy won't trade
+price_floor: null
+
+# Maximum price above which the strategy won't trade
+price_ceiling: null
+
+# Time in seconds before cancelling the limit order
+# If cancel_order wait time is 60 and the order is still open after 60 seconds since placing the order,
+# it will cancel the limit order.
+cancel_order_wait_time: null
+
+# Specify buy/sell.
+order_side: "buy"
+
+# Specifies if the strategy should run during a fixed time span
+is_time_span_execution: False
+
+# Specifies if the strategy should run during a with a delayed start
+is_delayed_start_execution: False
+
+# Date and time the strategy should start running
+# Only valid if is_time_span_execution is True
+start_datetime: null
+
+# Date and time the strategy should stop running
+# Only valid if is_time_span_execution is True
+end_datetime: null
+
+# How long to between placing incremental orders
+order_delay_time: null
+
+# For more detailed information, see:
+# https://docs.hummingbot.io/strategies/simple-trade/#configuration-parameters
