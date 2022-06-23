@@ -46,9 +46,9 @@ afterAll(async () => {
   await ethereum.close();
 });
 
-const patchTrade = (error?: Error) => {
+const patchTrade = (_key: string, error?: Error) => {
   patch(uniswap.alphaRouter, 'route', () => {
-    if (error) return;
+    if (error) return false;
     const WETH_DAI = new Pair(
       CurrencyAmount.fromRawAmount(WETH, '2000000000000000000'),
       CurrencyAmount.fromRawAmount(DAI, '1000000000000000000')
