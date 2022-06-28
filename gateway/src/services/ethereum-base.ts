@@ -349,7 +349,8 @@ export class EthereumBase {
   public getTokenBySymbol(tokenSymbol: string): TokenInfo | undefined {
     return this.tokenList.find(
       (token: TokenInfo) =>
-        token.symbol.toUpperCase() === tokenSymbol.toUpperCase()
+        token.symbol.toUpperCase() === tokenSymbol.toUpperCase() &&
+        token.chainId === this.chainId
     );
   }
 
