@@ -65,18 +65,11 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         self.resume_test_event.set()
         raise exception
 
-    def test_get_ws_assistant(self):
+    def test_connected_websocket_assistant(self):
 
-        data_source = HuobiAPIUserStreamDataSource(self.auth)
+        ws_assistant = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        self.assertIsInstance(ws_assistant, WSAssistant)
 
-        self.assertIsNone(data_source._ws_assistant)
-
-        initial_ws_assistant = self.async_run_with_timeout(data_source._get_ws_assistant())
-        self.assertIsNotNone(data_source._ws_assistant)
-        self.assertIsInstance(initial_ws_assistant, WSAssistant)
-
-        subsequent_ws_assistant = self.async_run_with_timeout(data_source._get_ws_assistant())
-        self.assertEqual(initial_ws_assistant, subsequent_ws_assistant)
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_authenticate_client_raises_cancelled(self, ws_connect_mock):
@@ -84,28 +77,22 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value.receive.side_effect = asyncio.CancelledError
 
         # Initialise WSAssistant and assume connected to websocket server
-        self.async_run_with_timeout(self.data_source._get_ws_assistant())
-        self.async_run_with_timeout(self.data_source._ws_assistant.connect(CONSTANTS.WS_PRIVATE_URL))
-
-        self.assertIsNotNone(self.data_source._ws_assistant)
+        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         with self.assertRaises(asyncio.CancelledError):
-            self.async_run_with_timeout(self.data_source._authenticate_client())
+            self.async_run_with_timeout(self.data_source._authenticate_client(ws))
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_authenticate_client_logs_exception(self, ws_connect_mock):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        self.async_run_with_timeout(self.data_source._get_ws_assistant())
-        self.async_run_with_timeout(self.data_source._ws_assistant.connect(CONSTANTS.WS_PRIVATE_URL))
-
-        self.assertIsNotNone(self.data_source._ws_assistant)
+        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         ws_connect_mock.return_value.send_json.side_effect = Exception("TEST ERROR")
 
         with self.assertRaisesRegex(Exception, "TEST ERROR"):
-            self.async_run_with_timeout(self.data_source._authenticate_client())
+            self.async_run_with_timeout(self.data_source._authenticate_client(ws))
 
         self._is_logged("ERROR", "Error occurred authenticating websocket connection... Error: TEST ERROR")
 
@@ -114,10 +101,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        self.async_run_with_timeout(self.data_source._get_ws_assistant())
-        self.async_run_with_timeout(self.data_source._ws_assistant.connect(CONSTANTS.WS_PRIVATE_URL))
-
-        self.assertIsNotNone(self.data_source._ws_assistant)
+        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         error_auth_response = {"action": "req", "code": 0, "TEST_ERROR": "ERROR WITH AUTHENTICATION"}
 
@@ -126,17 +110,14 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ValueError, "User Stream Authentication Fail!"):
-            self.async_run_with_timeout(self.data_source._authenticate_client())
+            self.async_run_with_timeout(self.data_source._authenticate_client(ws))
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_authenticate_client_successful(self, ws_connect_mock):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        self.async_run_with_timeout(self.data_source._get_ws_assistant())
-        self.async_run_with_timeout(self.data_source._ws_assistant.connect(CONSTANTS.WS_PRIVATE_URL))
-
-        self.assertIsNotNone(self.data_source._ws_assistant)
+        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         successful_auth_response = {"action": "req", "code": 200, "ch": "auth", "data": {}}
 
@@ -144,7 +125,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
             ws_connect_mock.return_value, message=json.dumps(successful_auth_response)
         )
 
-        result = self.async_run_with_timeout(self.data_source._authenticate_client())
+        result = self.async_run_with_timeout(self.data_source._authenticate_client(ws))
 
         self.assertIsNone(result)
         self._is_logged("INFO", "Successfully authenticated to user...")
@@ -155,34 +136,34 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value.receive.side_effect = asyncio.CancelledError
 
         # Initialise WSAssistant and assume connected to websocket server
-        self.async_run_with_timeout(self.data_source._get_ws_assistant())
-        self.async_run_with_timeout(self.data_source._ws_assistant.connect(CONSTANTS.WS_PRIVATE_URL))
+        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
-        self.assertIsNotNone(self.data_source._ws_assistant)
 
         with self.assertRaises(asyncio.CancelledError):
             self.async_run_with_timeout(
-                self.data_source._subscribe_channels(websocket_assistant=self.data_source._ws_assistant))
+                self.data_source._subscribe_channels(websocket_assistant=ws))
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_subscribe_channels_subscribe_topic_fail(self, ws_connect_mock):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        self.async_run_with_timeout(self.data_source._get_ws_assistant())
-        self.async_run_with_timeout(self.data_source._ws_assistant.connect(CONSTANTS.WS_PRIVATE_URL))
+        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
-        self.assertIsNotNone(self.data_source._ws_assistant)
+        successful_auth_response = {"action": "req", "code": 200, "ch": "auth", "data": {}}
 
         error_sub_response = {"action": "sub", "code": 0, "TEST_ERROR": "ERROR SUBSCRIBING TO USER STREAM TOPIC"}
 
+        self.mocking_assistant.add_websocket_aiohttp_message(
+            ws_connect_mock.return_value, message=json.dumps(successful_auth_response)
+        )
         self.mocking_assistant.add_websocket_aiohttp_message(
             ws_connect_mock.return_value, message=json.dumps(error_sub_response)
         )
 
         with self.assertRaisesRegex(ValueError, "Error subscribing to topic: "):
             self.async_run_with_timeout(
-                self.data_source._subscribe_channels(websocket_assistant=self.data_source._ws_assistant))
+                self.data_source._subscribe_channels(websocket_assistant=ws))
 
         self._is_logged("ERROR", f"Cannot subscribe to user stream topic: {CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC}")
 
@@ -193,14 +174,15 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        self.async_run_with_timeout(self.data_source._get_ws_assistant())
-        self.async_run_with_timeout(self.data_source._ws_assistant.connect(CONSTANTS.WS_PRIVATE_URL))
+        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        successful_auth_response = {"action": "req", "code": 200, "ch": "auth", "data": {}}
 
-        self.assertIsNotNone(self.data_source._ws_assistant)
         successful_sub_trades_response = {"action": "sub", "code": 200, "ch": "trade.clearing#*", "data": {}}
         successful_sub_order_response = {"action": "sub", "code": 200, "ch": "orders#*", "data": {}}
         successful_sub_account_response = {"action": "sub", "code": 200, "ch": "accounts.update#2", "data": {}}
-
+        self.mocking_assistant.add_websocket_aiohttp_message(
+            ws_connect_mock.return_value, message=json.dumps(successful_auth_response)
+        )
         self.mocking_assistant.add_websocket_aiohttp_message(
             ws_connect_mock.return_value, message=json.dumps(successful_sub_trades_response)
         )
@@ -212,7 +194,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         )
 
         result = self.async_run_with_timeout(
-            self.data_source._subscribe_channels(websocket_assistant=self.data_source._ws_assistant))
+            self.data_source._subscribe_channels(websocket_assistant=ws))
 
         self.assertIsNone(result)
 
