@@ -41,20 +41,6 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
                                      trading_pairs: List[str]) -> Dict[str, float]:
         return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
 
-    '''
-    Code to be refactored in exchange class
-    async def get_last_traded_prices(cls, trading_pairs: List[str]) -> Dict[str, float]:
-        api_factory = build_api_factory()
-        rest_assistant = await api_factory.get_rest_assistant()        url = CONSTANTS.REST_URL + CONSTANTS.TICKER_URL
-        request = RESTRequest(method=RESTMethod.GET,
-                              url=url)
-        response: RESTResponse = await rest_assistant.call(request=request)        results = dict()
-        resp_json = await response.json()
-        for trading_pair in trading_pairs:
-            resp_record = [o for o in resp_json["data"] if o["symbol"] == convert_to_exchange_trading_pair(trading_pair)][0]
-            results[trading_pair] = float(resp_record["close"])
-        return results'''
-
     async def request_new_orderbook_snapshot(self, trading_pair: str) -> Dict[str, Any]:
         rest_assistant = await self._api_factory.get_rest_assistant()
         url = CONSTANTS.REST_URL + CONSTANTS.DEPTH_URL
