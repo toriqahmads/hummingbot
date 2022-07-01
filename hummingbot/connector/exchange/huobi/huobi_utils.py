@@ -1,6 +1,6 @@
 import re
 from decimal import Decimal
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 
 from hummingbot.client.config.config_methods import using_exchange
 from hummingbot.client.config.config_var import ConfigVar
@@ -56,6 +56,14 @@ def build_api_factory() -> WebAssistantsFactory:
     throttler = AsyncThrottler(rate_limits=[])
     api_factory = WebAssistantsFactory(throttler=throttler, ws_post_processors=[HuobiWSPostProcessor()])
     return api_factory
+
+def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
+    """
+    Verifies if a trading pair is enabled to operate with based on its exchange information
+    :param exchange_info: the exchange information for a trading pair
+    :return: True if the trading pair is enabled, False otherwise
+    """
+    return exchange_info.get("te", None) and "SPOT" in exchange_info.get("ce", None)
 
 
 KEYS = {
