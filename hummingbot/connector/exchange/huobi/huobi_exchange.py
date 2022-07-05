@@ -1,4 +1,5 @@
 import asyncio
+from email import utils
 import logging
 import time
 from decimal import Decimal
@@ -20,13 +21,7 @@ from hummingbot.core.data_type.user_stream_tracker_data_source import UserStream
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate, TradeUpdate
 from hummingbot.connector.exchange.huobi.huobi_order_book_tracker import HuobiOrderBookTracker
-from hummingbot.connector.exchange.huobi.huobi_user_stream_tracker import HuobiUserStreamTracker
-from hummingbot.connector.exchange.huobi.huobi_utils import (
-    BROKER_ID,
-    build_api_factory,
-    convert_to_exchange_trading_pair,
-    is_exchange_information_valid
-)
+from hummingbot.connector.exchange.huobi import huobi_utils as web_utils
 from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.connector.exchange_base import ExchangeBase
 from hummingbot.connector.trading_rule import TradingRule
@@ -67,6 +62,8 @@ HUOBI_ROOT_API = "https://api.huobi.pro/v1"
 
 class HuobiExchange(ExchangePyBase):
     
+    web_utils = web_utils
+
     MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
     MARKET_SELL_ORDER_COMPLETED_EVENT_TAG = MarketEvent.SellOrderCompleted.value
     MARKET_ORDER_CANCELED_EVENT_TAG = MarketEvent.OrderCancelled.value
@@ -113,7 +110,7 @@ class HuobiExchange(ExchangePyBase):
         pass
     @property
     def domain(self):
-        pass
+        return
 
     @property
     def client_order_id_max_length(self):
@@ -125,11 +122,12 @@ class HuobiExchange(ExchangePyBase):
 
     @property
     def trading_rules_request_path(self):
-        return CONSTANTS.SYMBOLS_URL
+        return CONSTANTS.API_VERSION_OLD + CONSTANTS.TRADE_RULES_URL
 
     @property
     def trading_pairs_request_path(self):
-        return CONSTANTS.SYMBOLS_URL
+        #return CONSTANTS.API_VERSION_NEW + CONSTANTS.SYMBOLS_URL
+        return CONSTANTS.API_VERSION_OLD + CONSTANTS.TRADE_RULES_URL
 
     @property
     def check_network_request_path(self):
@@ -148,7 +146,7 @@ class HuobiExchange(ExchangePyBase):
         return self._trading_required
     
     def _create_web_assistants_factory(self) -> WebAssistantsFactory:
-        return build_api_factory()
+        return web_utils.build_api_factory()
     
     def _create_order_book_data_source(self):
         pass
@@ -212,24 +210,25 @@ class HuobiExchange(ExchangePyBase):
 
             
 
-    def _format_trading_rules(self, raw_trading_pair_info: List[Dict[str, Any]]) -> List[TradingRule]:
+    async def _format_trading_rules(self, raw_trading_pair_info: List[Dict[str, Any]]) -> List[TradingRule]:
         trading_rules = []
 
-        for info in raw_trading_pair_info:
+        for info in raw_trading_pair_info["data"]:
             try:
-                base_asset = info["base-currency"]
-                quote_asset = info["quote-currency"]
+                base_asset = info["bc"]
+                quote_asset = info["qc"]
                 trading_rules.append(
-                    TradingRule(trading_pair=f"{base_asset}-{quote_asset}".upper(),
-                                min_order_size=Decimal(info["min-order-amt"]),
-                                max_order_size=Decimal(info["max-order-amt"]),
-                                min_price_increment=Decimal(f"1e-{info['price-precision']}"),
-                                min_base_amount_increment=Decimal(f"1e-{info['amount-precision']}"),
-                                min_quote_amount_increment=Decimal(f"1e-{info['value-precision']}"),
-                                min_notional_size=Decimal(info["min-order-value"]))
-                )
+                        TradingRule(trading_pair=f"{base_asset}-{quote_asset}".upper(),
+                                min_order_size=Decimal(info["minoa"]),
+                                max_order_size=Decimal(info["maxoa"]),
+                                min_price_increment=Decimal(f"1e-{info['pp']}"),
+                                min_base_amount_increment=Decimal(f"1e-{info['ap']}"),
+                                min_quote_amount_increment=Decimal(f"1e-{info['vp']}"),
+                                min_notional_size=Decimal(info["minov"]))
+                    )
             except Exception:
                 self.logger().error(f"Error parsing the trading pair rule {info}. Skipping.", exc_info=True)
+        
         return trading_rules
 
     async def get_order_status(self, exchange_order_id: str) -> Dict[str, Any]:
@@ -461,7 +460,7 @@ class HuobiExchange(ExchangePyBase):
             "account-id": self._account_id,
             "amount": f"{amount:f}",
             "client-order-id": order_id,
-            "symbol": convert_to_exchange_trading_pair(trading_pair),
+            "symbol": web_utils.convert_to_exchange_trading_pair(trading_pair),
             "type": f"{side}-{order_type_str}",
         }
         if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
@@ -574,7 +573,7 @@ class HuobiExchange(ExchangePyBase):
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
         mapping = bidict()
-        for symbol_data in filter(is_exchange_information_valid, exchange_info.get("data", [])):
+        for symbol_data in exchange_info.get("data", []):
             mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["bc"],
                                                                         quote=symbol_data["qc"])
         self._set_trading_pair_symbol_map(mapping)
@@ -589,6 +588,6 @@ class HuobiExchange(ExchangePyBase):
             path_url=url,
             method=RESTMethod.GET,
         )
-        resp_record = [o for o in resp_json["data"] if o["symbol"] == convert_to_exchange_trading_pair(trading_pair)][0]
+        resp_record = [o for o in resp_json["data"] if o["symbol"] == web_utils.convert_to_exchange_trading_pair(trading_pair)][0]
         return float(resp_record["close"])
         

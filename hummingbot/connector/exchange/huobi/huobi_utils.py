@@ -8,6 +8,8 @@ from hummingbot.connector.exchange.huobi.huobi_ws_post_processor import HuobiWSP
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.trade_fee import TradeFeeSchema
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
+import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
+
 
 DEFAULT_FEES = TradeFeeSchema(
     maker_percent_fee_decimal=Decimal("0.002"),
@@ -63,8 +65,27 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     :param exchange_info: the exchange information for a trading pair
     :return: True if the trading pair is enabled, False otherwise
     """
-    return exchange_info.get("te", None) and "SPOT" in exchange_info.get("ce", None)
+    return exchange_info.get("te", None)
 
+def public_rest_url(path_url: str, domain: str = None) -> str:
+    """
+    Creates a full URL for provided REST endpoint
+
+    :param path_url: a public REST endpoint
+
+    :return: the full URL to the endpoint
+    """
+    return CONSTANTS.REST_URL + path_url
+
+def private_rest_url(path_url: str, domain: str = None) -> str:
+    """
+    Creates a full URL for provided REST endpoint
+
+    :param path_url: a private REST endpoint
+
+    :return: the full URL to the endpoint
+    """
+    return public_rest_url(path_url=path_url, domain=domain)
 
 KEYS = {
     "huobi_api_key":
