@@ -1433,7 +1433,7 @@ class AbstractExchangeConnectorTests:
         def test_user_stream_logs_errors(self):
             self.exchange._set_current_timestamp(1640780000)
 
-            incomplete_event = "Invalid message"
+            incomplete_event = {"msg":"Invalid message"}
 
             mock_queue = AsyncMock()
             mock_queue.get.side_effect = [incomplete_event, asyncio.CancelledError]

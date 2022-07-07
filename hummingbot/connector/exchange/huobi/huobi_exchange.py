@@ -47,7 +47,7 @@ from hummingbot.connector.utils import TradeFillOrderDetails, combine_to_hb_trad
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.core.utils.async_call_scheduler import AsyncCallScheduler
 from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
-from hummingbot.core.utils.estimate_fee import estimate_fee
+from hummingbot.core.utils.estimate_fee import estimate_fee, build_trade_fee
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest
 from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
 from hummingbot.logger import HummingbotLogger
@@ -62,6 +62,7 @@ HUOBI_ROOT_API = "https://api.huobi.pro/v1"
 
 class HuobiExchange(ExchangePyBase):
     
+    UPDATE_ORDER_STATUS_MIN_INTERVAL = 1.0
     web_utils = web_utils
 
     MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
@@ -91,8 +92,8 @@ class HuobiExchange(ExchangePyBase):
         self._async_scheduler = AsyncCallScheduler(call_interval=0.5)
         self._ev_loop = asyncio.get_event_loop()
         self._in_flight_orders = {}
-        super().__init__()
-        self._set_order_book_tracker(HuobiOrderBookTracker(
+        super().__init__() 
+        self._set_order_book_tracker(HuobiOrderBookTracker(connector=self,
             trading_pairs=trading_pairs,
             api_factory=self._web_assistants_factory,
         ))
@@ -107,7 +108,8 @@ class HuobiExchange(ExchangePyBase):
     
     @property
     def rate_limits_rules(self):
-        pass
+        return CONSTANTS.RATE_LIMITS
+
     @property
     def domain(self):
         return
@@ -118,16 +120,15 @@ class HuobiExchange(ExchangePyBase):
 
     @property
     def client_order_id_prefix(self):
-        pass
+        return CONSTANTS.BROKER_ID
 
     @property
     def trading_rules_request_path(self):
-        return CONSTANTS.API_VERSION_OLD + CONSTANTS.TRADE_RULES_URL
+        return CONSTANTS.TRADE_RULES_URL
 
     @property
     def trading_pairs_request_path(self):
-        #return CONSTANTS.API_VERSION_NEW + CONSTANTS.SYMBOLS_URL
-        return CONSTANTS.API_VERSION_OLD + CONSTANTS.TRADE_RULES_URL
+        return CONSTANTS.SYMBOLS_URL
 
     @property
     def check_network_request_path(self):
@@ -146,19 +147,21 @@ class HuobiExchange(ExchangePyBase):
         return self._trading_required
     
     def _create_web_assistants_factory(self) -> WebAssistantsFactory:
-        return web_utils.build_api_factory()
+        return web_utils.build_api_factory(throttler=self._throttler,time_synchronizer=self._time_synchronizer,
+            auth=self._auth)
     
     def _create_order_book_data_source(self):
         pass
 
     def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
         return HuobiAPIUserStreamDataSource(huobi_auth=self._auth,
-                                                             api_factory=self._web_assistants_factory)
+                                            api_factory=self._web_assistants_factory,
+                                            )
 
 
 
     async def _update_account_id(self) -> str:
-        accounts = await self._api_request("get", path_url=CONSTANTS.ACCOUNT_ID_URL, is_auth_required=True)
+        accounts = await self._api_get( path_url=CONSTANTS.ACCOUNT_ID_URL, is_auth_required=True)
         try:
             for account in accounts:
                 if account["state"] == "working" and account["type"] == "spot":
@@ -194,20 +197,17 @@ class HuobiExchange(ExchangePyBase):
             self._account_available_balances = new_available_balances
             self._account_balances.clear()
             self._account_balances = new_balances
-            
     
-    def _get_fee(self,
-                 base_currency: str,
-                 quote_currency: str,
-                 order_type: OrderType,
-                 order_side: TradeType,
-                 amount: Decimal,
-                 price: Decimal = s_decimal_NaN,
-                 is_maker: Optional[bool] = None):
-            
-            is_maker = order_type is OrderType.LIMIT_MAKER
-            return estimate_fee("huobi", is_maker)
-
+    async def _update_trading_rules(self):
+        """Overriding the method in child class because Huobi has separate endpoints
+           for symbol data"""
+        exchange_info = await self._api_get(path_url=self.trading_pairs_request_path)
+        await self._initialize_trading_pair_symbols_from_exchange_info(exchange_info=exchange_info)
+        exchange_trade_rules = await self._api_get(path_url=self.trading_rules_request_path)
+        trading_rules_list = await self._format_trading_rules(exchange_trade_rules)
+        self._trading_rules.clear()
+        for trading_rule in trading_rules_list:
+            self._trading_rules[trading_rule.trading_pair] = trading_rule
             
 
     async def _format_trading_rules(self, raw_trading_pair_info: List[Dict[str, Any]]) -> List[TradingRule]:
@@ -215,6 +215,8 @@ class HuobiExchange(ExchangePyBase):
 
         for info in raw_trading_pair_info["data"]:
             try:
+                if info["symbol"] not in self._trading_pair_symbol_map:
+                    continue
                 base_asset = info["bc"]
                 quote_asset = info["qc"]
                 trading_rules.append(
@@ -354,8 +356,9 @@ class HuobiExchange(ExchangePyBase):
         """
         async for stream_message in self._iter_user_event_queue():
             try:
-                channel = stream_message.get("ch", None)
-                if channel not in CONSTANTS.HUOBI_SUBSCRIBE_TOPICS:
+                channel = stream_message["ch"]
+                topic_check = [True if channel.startswith(topic) else False for topic in CONSTANTS.HUOBI_SUBSCRIBE_TOPICS]
+                if not any(topic_check):
                     continue
 
                 data = stream_message["data"]
@@ -364,16 +367,16 @@ class HuobiExchange(ExchangePyBase):
                     self.logger().info(f"Successfully subscribed to {channel}")
                     continue
 
-                if channel == CONSTANTS.HUOBI_ACCOUNT_UPDATE_TOPIC:
+                if channel.startswith(CONSTANTS.HUOBI_ACCOUNT_UPDATE_TOPIC):
                     asset_name = data["currency"].upper()
                     balance = data["balance"]
                     available_balance = data["available"]
 
                     self._account_balances.update({asset_name: Decimal(balance)})
                     self._account_available_balances.update({asset_name: Decimal(available_balance)})
-                elif channel == CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC:
+                elif channel.startswith(CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC):
                     safe_ensure_future(self._process_order_update(data))
-                elif channel == CONSTANTS.HUOBI_TRADE_DETAILS_TOPIC:
+                elif channel.startswith(CONSTANTS.HUOBI_TRADE_DETAILS_TOPIC):
                     safe_ensure_future(self._process_trade_event(data))
             except asyncio.CancelledError:
                 raise
@@ -573,8 +576,8 @@ class HuobiExchange(ExchangePyBase):
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
         mapping = bidict()
-        for symbol_data in exchange_info.get("data", []):
-            mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["bc"],
+        for symbol_data in filter(web_utils.is_exchange_information_valid, exchange_info.get("data", [])):
+            mapping[symbol_data["sc"]] = combine_to_hb_trading_pair(base=symbol_data["bc"],
                                                                         quote=symbol_data["qc"])
         self._set_trading_pair_symbol_map(mapping)
 
@@ -591,3 +594,14 @@ class HuobiExchange(ExchangePyBase):
         resp_record = [o for o in resp_json["data"] if o["symbol"] == web_utils.convert_to_exchange_trading_pair(trading_pair)][0]
         return float(resp_record["close"])
         
+
+    def get_fee(self,
+                base_currency: str,
+                quote_currency: str,
+                order_type: OrderType,
+                order_side: TradeType,
+                amount: Decimal,
+                price: Decimal = s_decimal_NaN,
+                is_maker: Optional[bool] = None):
+        
+        return build_trade_fee(self.name, is_maker, base_currency=base_currency, quote_currency=quote_currency, order_type=order_type, order_side=order_side, amount=amount, price=price)

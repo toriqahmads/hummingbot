@@ -623,7 +623,7 @@ class HuobiExchangeTests(TestCase):
             price=Decimal("2"),
         )
         expected_client_order_id = get_new_client_order_id(
-            is_buy=True, trading_pair=self.trading_pair, hbot_order_id_prefix=web_utils.BROKER_ID
+            is_buy=True, trading_pair=self.trading_pair, hbot_order_id_prefix=CONSTANTS.BROKER_ID
         )
 
         self.assertEqual(result, expected_client_order_id)
@@ -635,7 +635,7 @@ class HuobiExchangeTests(TestCase):
             price=Decimal("2"),
         )
         expected_client_order_id = get_new_client_order_id(
-            is_buy=False, trading_pair=self.trading_pair, hbot_order_id_prefix=web_utils.BROKER_ID
+            is_buy=False, trading_pair=self.trading_pair, hbot_order_id_prefix=CONSTANTS.BROKER_ID
         )
 
         self.assertEqual(result, expected_client_order_id)

@@ -22,7 +22,7 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     def __init__(self,
                  trading_pairs: List[str],
-                 connector: 'HuobiExchange',
+                 connector,
                  api_factory: WebAssistantsFactory,
                  ):
         super().__init__(trading_pairs)

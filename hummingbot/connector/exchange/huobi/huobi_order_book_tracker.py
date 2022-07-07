@@ -31,9 +31,10 @@ class HuobiOrderBookTracker(OrderBookTracker):
         return cls._hobt_logger
 
     def __init__(self,
+                 connector,
                  trading_pairs: Optional[List[str]] = None,
                  api_factory: Optional[WebAssistantsFactory] = None):
-        super().__init__(data_source=HuobiAPIOrderBookDataSource(trading_pairs=trading_pairs,
+        super().__init__(data_source=HuobiAPIOrderBookDataSource(connector=connector, trading_pairs=trading_pairs,
                                                                  api_factory=api_factory),
                          trading_pairs=trading_pairs)
         self._order_book_diff_stream: asyncio.Queue = asyncio.Queue()
