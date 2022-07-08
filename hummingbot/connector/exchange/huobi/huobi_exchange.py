@@ -1,58 +1,26 @@
 import asyncio
-from email import utils
-import logging
 import time
 from decimal import Decimal
-from typing import (
-    Any,
-    AsyncIterable,
-    Dict,
-    List,
-    Optional
-)
-
-import ujson
+from typing import Any, AsyncIterable, Dict, List, Optional
 
 from bidict import bidict
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
-from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source import HuobiAPIUserStreamDataSource
-from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
-from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate, TradeUpdate
-from hummingbot.connector.exchange.huobi.huobi_order_book_tracker import HuobiOrderBookTracker
 from hummingbot.connector.exchange.huobi import huobi_utils as web_utils
-from hummingbot.connector.utils import get_new_client_order_id
-from hummingbot.connector.exchange_base import ExchangeBase
-from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.core.clock import Clock
-from hummingbot.core.data_type.cancellation_result import CancellationResult
-from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.core.data_type.limit_order import LimitOrder
-from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount
-from hummingbot.core.event.events import (
-    BuyOrderCompletedEvent,
-    BuyOrderCreatedEvent,
-    MarketEvent,
-    MarketOrderFailureEvent,
-    MarketTransactionFailureEvent,
-    OrderCancelledEvent,
-    OrderFilledEvent,
-    SellOrderCompletedEvent,
-    SellOrderCreatedEvent,
-)
-from hummingbot.core.network_iterator import NetworkStatus
-from hummingbot.connector.utils import TradeFillOrderDetails, combine_to_hb_trading_pair
+from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source import HuobiAPIUserStreamDataSource
+from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
+from hummingbot.connector.exchange.huobi.huobi_order_book_tracker import HuobiOrderBookTracker
 from hummingbot.connector.exchange_py_base import ExchangePyBase
+from hummingbot.connector.trading_rule import TradingRule
+from hummingbot.connector.utils import combine_to_hb_trading_pair
+from hummingbot.core.data_type.common import OrderType, TradeType
+from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate
+from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
+from hummingbot.core.event.events import MarketEvent, OrderFilledEvent
 from hummingbot.core.utils.async_call_scheduler import AsyncCallScheduler
-from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
-from hummingbot.core.utils.estimate_fee import estimate_fee, build_trade_fee
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest
-from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
-from hummingbot.logger import HummingbotLogger
+from hummingbot.core.utils.async_utils import safe_ensure_future
+from hummingbot.core.utils.estimate_fee import build_trade_fee
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-
 
 hm_logger = None
 s_decimal_0 = Decimal(0)
@@ -104,7 +72,7 @@ class HuobiExchange(ExchangePyBase):
     
     @property
     def authenticator(self):
-        HuobiAuth(api_key=self.huobi_api_key, secret_key=self.huobi_secret_key)
+        return HuobiAuth(api_key=self.huobi_api_key, secret_key=self.huobi_secret_key)
     
     @property
     def rate_limits_rules(self):
@@ -453,7 +421,7 @@ class HuobiExchange(ExchangePyBase):
                           amount: Decimal,
                           trade_type: TradeType,
                           order_type: OrderType,
-                          price: Decimal) -> str:
+                          price: Decimal):
         path_url = CONSTANTS.PLACE_ORDER_URL
         side = trade_type.name.lower()
         order_type_str = "limit" if order_type is OrderType.LIMIT else "limit-maker"

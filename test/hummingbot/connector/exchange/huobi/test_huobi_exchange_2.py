@@ -1,22 +1,20 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from decimal import Decimal
+import asyncio
 import json
 import re
-import asyncio
-
-
-from aioresponses.core import RequestCall
-from aioresponses import aioresponses
+from decimal import Decimal
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import AsyncMock, patch
 
+from aioresponses import aioresponses
+from aioresponses.core import RequestCall
 
-from hummingbot.connector.utils import get_new_client_order_id
-from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
-from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState
-from hummingbot.core.data_type.common import OrderType, TradeType
-from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
 from hummingbot.connector.exchange.huobi import huobi_constants as CONSTANTS, huobi_utils as web_utils
+from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
+from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
+from hummingbot.connector.trading_rule import TradingRule
+from hummingbot.connector.utils import get_new_client_order_id
+from hummingbot.core.data_type.common import OrderType, TradeType
+from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
 from hummingbot.core.event.events import MarketOrderFailureEvent, OrderFilledEvent
 
@@ -46,7 +44,8 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     @property
     def order_creation_url(self):
         url = web_utils.private_rest_url(CONSTANTS.PLACE_ORDER_URL)
-        return url
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        return regex_url
 
     @property
     def balance_url(self):
@@ -749,8 +748,8 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def _validate_auth_credentials_taking_parameters_from_argument(self,
                                                                    request_call_tuple: RequestCall,
                                                                    params: Dict[str, Any]):
-        self.assertIn("timestamp", params)
-        self.assertIn("signature", params)
+        self.assertIn("Timestamp", params)
+        self.assertIn("Signature", params)
         request_headers = request_call_tuple.kwargs["headers"]
         self.assertIn("X-MBX-APIKEY", request_headers)
         self.assertEqual("testAPIKey", request_headers["X-MBX-APIKEY"])
@@ -848,7 +847,6 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])
 
     @aioresponses()
-    @aioresponses()
     def test_update_trading_rules(self, mock_api, mock_pairs):
             self.exchange._set_current_timestamp(1000)
 
@@ -864,7 +862,6 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
             self.assertTrue(self.trading_pair in self.exchange.trading_rules)
 
-    @aioresponses()
     @aioresponses()
     def test_update_trading_rules_ignores_rule_with_error(self, mock_api, mock_pairs):
             self.exchange._set_current_timestamp(1000)

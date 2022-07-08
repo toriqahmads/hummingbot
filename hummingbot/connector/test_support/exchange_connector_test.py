@@ -3,7 +3,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from unittest import TestCase
 from unittest.mock import AsyncMock, patch
 
@@ -353,6 +353,9 @@ class AbstractExchangeConnectorTests:
         def setUp(self) -> None:
             super().setUp()
 
+            asyncio.set_event_loop(asyncio.new_event_loop())
+            self.ev_loop = asyncio.get_event_loop()
+
             self.log_records = []
             self.async_tasks: List[asyncio.Task] = []
 
@@ -375,6 +378,7 @@ class AbstractExchangeConnectorTests:
         def tearDown(self) -> None:
             for task in self.async_tasks:
                 task.cancel()
+            self.ev_loop.close()
             super().tearDown()
 
         def handle(self, record):
@@ -1462,9 +1466,13 @@ class AbstractExchangeConnectorTests:
                 )
             }
 
-        def _all_executed_requests(self, api_mock: aioresponses, url: str) -> List[RequestCall]:
+        def _all_executed_requests(self, api_mock: aioresponses, url: Union[str, re.Pattern]) -> List[RequestCall]:
+            if isinstance(url, str):
+                checker_fn = lambda url_str: url_str.startswith(url)
+            else:
+                checker_fn = lambda url_str: url.search(url_str)
             request_calls = []
             for key, value in api_mock.requests.items():
-                if key[1].human_repr().startswith(url):
+                if checker_fn(key[1].human_repr()):
                     request_calls.extend(value)
             return request_calls

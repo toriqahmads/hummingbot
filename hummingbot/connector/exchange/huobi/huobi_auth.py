@@ -1,18 +1,18 @@
 import base64
-from datetime import datetime
 import hashlib
 import hmac
-from typing import (
-    Any,
-    Dict
-)
-from urllib.parse import urlencode
 from collections import OrderedDict
+from datetime import datetime
+from typing import Any, Dict
+from urllib.parse import urlencode
+
+from hummingbot.core.web_assistant.auth import AuthBase
+from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSRequest
 
 HUOBI_HOST_NAME = "api.huobi.pro"
 
 
-class HuobiAuth:
+class HuobiAuth(AuthBase):
     def __init__(self, api_key: str, secret_key: str):
         self.api_key: str = api_key
         self.hostname: str = HUOBI_HOST_NAME
@@ -21,6 +21,15 @@ class HuobiAuth:
     @staticmethod
     def keysort(dictionary: Dict[str, str]) -> Dict[str, str]:
         return OrderedDict(sorted(dictionary.items(), key=lambda t: t[0]))
+
+    async def rest_authenticate(self, request: RESTRequest) -> RESTRequest:
+        params = request.params
+        updated_params = self.add_auth_to_params(...)
+        request.params = params
+        raise NotImplementedError
+
+    async def ws_authenticate(self, request: WSRequest) -> WSRequest:
+        raise NotImplementedError
 
     def add_auth_to_params(self,
                            method: str,
