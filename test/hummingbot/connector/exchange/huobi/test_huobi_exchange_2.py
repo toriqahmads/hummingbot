@@ -18,6 +18,7 @@ from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
 from hummingbot.connector.exchange.huobi import huobi_constants as CONSTANTS, huobi_utils as web_utils
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
+from hummingbot.core.event.events import MarketOrderFailureEvent, OrderFilledEvent
 
 
 class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
@@ -28,7 +29,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def latest_prices_url(self):
-        url = web_utils.public_rest_url(path_url=CONSTANTS.LAST_TRADE_URL)
+        url = web_utils.public_rest_url(path_url=CONSTANTS.TICKER_URL)
         url = f"{url}?symbol={self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset)}"
         return url
 
@@ -50,6 +51,8 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     @property
     def balance_url(self):
         url = web_utils.private_rest_url(CONSTANTS.ACCOUNT_BALANCE_URL)
+        test_account = "1000001"
+        url = url.format(test_account)
         return url
     
     @property
@@ -98,23 +101,24 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     @property
     def latest_prices_request_mock_response(self):
         return {
-    "ch": f"market.{self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset)}.trade.detail",
-    "status": "ok",
-    "ts": 1639598493658,
-    "tick": {
-        "id": 136107843051,
-        "ts": 1639598493658,
-        "data": [
-            {
-                "id": 136107843051348400221001656,
-                "ts": 1639598493658,
-                "trade-id": 102517374388,
-                "amount": 0.028416,
-                "price": 49806.0,
-                "direction": "buy"
-            },
-        ]
-    }
+    "status":"ok",
+    "ts":1629789355531,
+    "data":[
+        {
+            "symbol":self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
+            "open":0.004659,     
+            "high":0.004696,     
+            "low":0.0046,        
+            "close":0.00468,     
+            "amount":36551302.17544405,
+            "vol":170526.0643855023,
+            "count":1709,
+            "bid":0.004651,
+            "bidSize":54300.341,
+            "ask":0.004679,
+            "askSize":1923.4879
+        },
+    ]
 }
 
 
@@ -209,8 +213,8 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         {
             "symbol":self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
             "state":"online",
-            "bc":self.base_asset.lower(),
-            "qc":self.quote_asset.lower(),
+            "bc":self.base_asset,
+            "qc":self.quote_asset,
             "pp":4,
             "ap":4,
             "sp":"main",
@@ -250,10 +254,10 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     "status":"ok",
     "data":[
         {
-            "symbol":self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
+            "symbol":self.exchange_symbol_for_tokens("INVALID", "PAIR"),
             "state":"online",
-            "bc":self.base_asset.lower(),
-            "qc":self.quote_asset.lower(),
+            "bc":self.base_asset,
+            "qc":self.quote_asset,
             "pp":4,
             "ap":4,
             "sp":"main",
@@ -301,15 +305,15 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         "state": "working",
         "list": [
             {
-                "currency": self.base_asset.lower(),
+                "currency": self.base_asset,
                 "type": "trade",
-                "balance": "91.850043797676510303",
+                "balance": "10.0",
                 "seq-num": "477"
             },
             {
-                "currency": self.quote_asset.lower(),
+                "currency": self.quote_asset,
                 "type": "trade",
-                "balance": "91.850043797676510303",
+                "balance": "2000.0",
                 "seq-num": "477"
             },
         ]
@@ -416,11 +420,14 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         return f"{base_token}{quote_token}"
 
     def create_exchange_instance(self):
-        return HuobiExchange(
+        instance = HuobiExchange(
             huobi_api_key="testAPIKey",
             huobi_secret_key="testSecret",
             trading_pairs=[self.trading_pair],
         )
+        instance._account_id = "100001"
+
+        return instance
     
     def validate_auth_credentials_present(self, request_call: RequestCall):
         self._validate_auth_credentials_taking_parameters_from_argument(
@@ -458,10 +465,10 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.API_VERSION_OLD+CONSTANTS.CANCEL_ORDER_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        url = web_utils.private_rest_url(CONSTANTS.CANCEL_ORDER_URL)
+        url = url.format(order.exchange_order_id)
         response = self._order_cancelation_request_successful_mock_response(order=order)
-        mock_api.delete(regex_url, body=json.dumps(response), callback=callback)
+        mock_api.post(url, body=json.dumps(response), callback=callback)
         return url
     
     def configure_erroneous_cancelation_response(
@@ -469,10 +476,11 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.API_VERSION_OLD+CONSTANTS.CANCEL_ORDER_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-        mock_api.delete(regex_url, status=400, callback=callback)
+        url = web_utils.private_rest_url(CONSTANTS.CANCEL_ORDER_URL)
+        url = url.format(order.exchange_order_id)
+        mock_api.post(url, status=400, callback=callback)
         return url
+    
 
     def configure_one_successful_one_erroneous_cancel_all_response(
             self,
@@ -527,7 +535,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         """
         :return: the URL configured
         """
-        url = web_utils.private_rest_url(CONSTANTS.API_VERSION_OLD+CONSTANTS.ORDER_DETAIL_URL)
+        url = web_utils.private_rest_url(CONSTANTS.OPEN_ORDERS_URL)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._order_status_request_open_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
@@ -567,10 +575,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable]) -> str:
-        """
-        :return: the URL configured
-        """
-        # Trade fills are not requested in Binance as part of the status update
+        
         pass
 
     def order_event_for_new_order_websocket_update(self, order: InFlightOrder):
@@ -619,6 +624,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 }
 
     def order_event_for_full_fill_websocket_update(self, order: InFlightOrder):
+        test_type = f"{order.trade_type.name.lower()}-limit"
         return {
     "action":"push",
     "ch":f"orders#{self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset)}",
@@ -629,46 +635,22 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         "tradeId":301,
         "tradeTime":1583854188883,
         "aggressor":True,
-        "remainAmt":"0.000000000000000400000000000000000000",
+        "remainAmt":"0.0",
         "execAmt":"2",
         "orderId":27163536,
-        "type":"sell-limit",
+        "type":test_type,
         "clientOrderId":order.client_order_id,
         "orderSource":"spot-api",
-        "orderPrice":"15000",
+        "orderPrice":str(order.price),
         "orderSize":"0.01",
         "orderStatus":"filled",
-        "symbol":"btcusdt",
+        "symbol":self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
         "eventType":"trade"
     }
 }
 
     def trade_event_for_full_fill_websocket_update(self, order: InFlightOrder):
-        return {
-    "ch": f"trade.clearing#{self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset)}#0",
-    "data": {
-         "eventType": "trade",
-         "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
-         "orderId": 99998888,
-         "tradePrice": "9999.99",
-         "tradeVolume": "0.96",
-         "orderSide": "buy",
-         "aggressor": True,
-         "tradeId": 919219323232,
-         "tradeTime": 998787897878,
-         "transactFee": "19.88",
-         "feeDeduct ": "0",
-         "feeDeductType": "",
-         "feeCurrency": "btc",
-         "accountId": 9912791,
-         "source": "spot-api",
-         "orderPrice": "10000",
-         "orderSize": "1",
-         "clientOrderId": "a001",
-         "orderCreateTime": 998787897878,
-         "orderStatus": "filled"
-    }
-}
+        return None
 
     def _order_status_request_partially_filled_mock_response(self, order: InFlightOrder) -> Any:
         return {
@@ -695,23 +677,23 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def _order_status_request_open_mock_response(self, order: InFlightOrder) -> Any:
         return {
     "status": "ok",
-    "data": {
-        "id": 357632718898331,
-        "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
-        "account-id": 13496526,
-        "client-order-id": "23456",
-        "amount": "5.000000000000000000",
-        "price": "1.000000000000000000",
-        "created-at": 1630649406687,
-        "type": "buy-limit-maker",
-        "field-amount": "0.0",
-        "field-cash-amount": "0.0",
-        "field-fees": "0.0",
-        "finished-at": 0,
-        "source": "spot-api",
-        "state": "submitted",
-        "canceled-at": 0
-    }
+    "data": [
+        {
+            "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
+            "source": "web",
+            "price": "1.555550000000000000",
+            "created-at": 1630633835224,
+            "amount": "572.330000000000000000",
+            "account-id": 13496526,
+            "filled-cash-amount": "0.0",
+            "client-order-id": order.client_order_id,
+            "filled-amount": "0.0",
+            "filled-fees": "0.0",
+            "id": order.exchange_order_id,
+            "state": "submitted",
+            "type": "sell-limit"
+        }
+    ]
 }
 
     def _order_status_request_canceled_mock_response(self, order: InFlightOrder) -> Any:
@@ -760,12 +742,9 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     def _order_cancelation_request_successful_mock_response(self, order: InFlightOrder) -> Any:
         return {
-    "status": "error",
-    "err-code": "order-orderstate-error",
-    "err-msg": "Incorrect order state",
-    "data": None,
-    "order-state": 7
-    }
+                "status": "ok",
+                "data": order.exchange_order_id,
+                }
 
     def _validate_auth_credentials_taking_parameters_from_argument(self,
                                                                    request_call_tuple: RequestCall,
@@ -852,97 +831,61 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             self.async_run_with_timeout, self.exchange._update_time_synchronizer())
     
     @aioresponses()
-    def test_update_order_fills_from_trades_triggers_filled_event(self, mock_api):
-        self.exchange._set_current_timestamp(1640780000)
-        self.exchange._last_poll_timestamp = (self.exchange.current_timestamp -
-                                              self.exchange.UPDATE_ORDER_STATUS_MIN_INTERVAL - 1)
+    @aioresponses()
+    def test_update_balances(self, mock_api, mock_account_id):
+            url = self.balance_url
+            response = self.balance_request_mock_response_for_base_and_quote
 
-        self.exchange.start_tracking_order(
-            order_id="OID1",
-            exchange_order_id="100234",
-            trading_pair=self.trading_pair,
-            order_type=OrderType.LIMIT,
-            trade_type=TradeType.BUY,
-            price=Decimal("10000"),
-            amount=Decimal("1"),
-        )
-        order = self.exchange.in_flight_orders["OID1"]
+            mock_api.get(re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?")), body=json.dumps(response))
+            
+            account_id_url = web_utils.public_rest_url(CONSTANTS.ACCOUNT_ID_URL)
+            test_id = 1000001
+            mock_account_id.get(re.compile(f"^{account_id_url}".replace(".", r"\.").replace("?", r"\?")), body=json.dumps(test_id))
+            
+            self.async_run_with_timeout(self.exchange._update_balances())
 
-        url = web_utils.private_rest_url(CONSTANTS.MY_TRADES_PATH_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+            available_balances = self.exchange.available_balances
+            total_balances = self.exchange.get_all_balances()
 
-        trade_fill = {
-            "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
-            "id": 28457,
-            "orderId": int(order.exchange_order_id),
-            "orderListId": -1,
-            "price": "9999",
-            "qty": "1",
-            "quoteQty": "48.000012",
-            "commission": "10.10000000",
-            "commissionAsset": self.quote_asset,
-            "time": 1499865549590,
-            "isBuyer": True,
-            "isMaker": False,
-            "isBestMatch": True
-        }
+            self.assertEqual(Decimal("10"), available_balances[self.base_asset])
+            self.assertEqual(Decimal("2000"), available_balances[self.quote_asset])
+            self.assertEqual(Decimal("15"), total_balances[self.base_asset])
+            self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])
 
-        trade_fill_non_tracked_order = {
-            "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
-            "id": 30000,
-            "orderId": 99999,
-            "orderListId": -1,
-            "price": "4.00000100",
-            "qty": "12.00000000",
-            "quoteQty": "48.000012",
-            "commission": "10.10000000",
-            "commissionAsset": "BNB",
-            "time": 1499865549590,
-            "isBuyer": True,
-            "isMaker": False,
-            "isBestMatch": True
-        }
+    @aioresponses()
+    @aioresponses()
+    def test_update_trading_rules(self, mock_api, mock_pairs):
+            self.exchange._set_current_timestamp(1000)
 
-        mock_response = [trade_fill, trade_fill_non_tracked_order]
-        mock_api.get(regex_url, body=json.dumps(mock_response))
+            mock__pairs_url = self.all_symbols_url
+            mock_pairs_response = self.all_symbols_request_mock_response
+            mock_pairs.get(mock__pairs_url, body=json.dumps(mock_pairs_response))
 
-        self.exchange.add_exchange_order_ids_from_market_recorder(
-            {str(trade_fill_non_tracked_order["orderId"]): "OID99"})
+            url = self.trading_rules_url
+            response = self.trading_rules_request_mock_response
+            mock_api.get(url, body=json.dumps(response))
 
-        self.async_run_with_timeout(self.exchange._update_order_fills_from_trades())
+            self.async_run_with_timeout(coroutine=self.exchange._update_trading_rules())
 
-        request = self._all_executed_requests(mock_api, url)[0]
-        self.validate_auth_credentials_present(request)
-        request_params = request.kwargs["params"]
-        self.assertEqual(self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset), request_params["symbol"])
+            self.assertTrue(self.trading_pair in self.exchange.trading_rules)
 
-        fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
-        self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
-        self.assertEqual(order.client_order_id, fill_event.order_id)
-        self.assertEqual(order.trading_pair, fill_event.trading_pair)
-        self.assertEqual(order.trade_type, fill_event.trade_type)
-        self.assertEqual(order.order_type, fill_event.order_type)
-        self.assertEqual(Decimal(trade_fill["price"]), fill_event.price)
-        self.assertEqual(Decimal(trade_fill["qty"]), fill_event.amount)
-        self.assertEqual(0.0, fill_event.trade_fee.percent)
-        self.assertEqual([TokenAmount(trade_fill["commissionAsset"], Decimal(trade_fill["commission"]))],
-                         fill_event.trade_fee.flat_fees)
+    @aioresponses()
+    @aioresponses()
+    def test_update_trading_rules_ignores_rule_with_error(self, mock_api, mock_pairs):
+            self.exchange._set_current_timestamp(1000)
 
-        fill_event: OrderFilledEvent = self.order_filled_logger.event_log[1]
-        self.assertEqual(float(trade_fill_non_tracked_order["time"]) * 1e-3, fill_event.timestamp)
-        self.assertEqual("OID99", fill_event.order_id)
-        self.assertEqual(self.trading_pair, fill_event.trading_pair)
-        self.assertEqual(TradeType.BUY, fill_event.trade_type)
-        self.assertEqual(OrderType.LIMIT, fill_event.order_type)
-        self.assertEqual(Decimal(trade_fill_non_tracked_order["price"]), fill_event.price)
-        self.assertEqual(Decimal(trade_fill_non_tracked_order["qty"]), fill_event.amount)
-        self.assertEqual(0.0, fill_event.trade_fee.percent)
-        self.assertEqual([
-            TokenAmount(
-                trade_fill_non_tracked_order["commissionAsset"],
-                Decimal(trade_fill_non_tracked_order["commission"]))],
-            fill_event.trade_fee.flat_fees)
-        self.assertTrue(self.is_logged(
-            "INFO",
-            f"Recreating missing trade in TradeFill: {trade_fill_non_tracked_order}"
-        ))
+            mock__pairs_url = self.all_symbols_url
+            mock_pairs_response = self.all_symbols_request_mock_response
+            mock_pairs.get(mock__pairs_url, body=json.dumps(mock_pairs_response))
+
+
+            url = self.trading_rules_url
+            response = self.trading_rules_request_erroneous_mock_response
+            mock_api.get(url, body=json.dumps(response))
+
+            self.async_run_with_timeout(coroutine=self.exchange._update_trading_rules())
+
+            self.assertEqual(0, len(self.exchange._trading_rules))
+            self.assertTrue(
+                self.is_logged("ERROR", self.expected_logged_error_for_erroneous_trading_rule)
+            )

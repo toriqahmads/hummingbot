@@ -384,29 +384,31 @@ class HuobiExchange(ExchangePyBase):
                 self.logger().error(f"Unexpected error in user stream listener loop. {e}", exc_info=True)
                 await asyncio.sleep(5.0)
 
-    async def _process_order_update(self, order_update: Dict[str, Any]):
-        order_id = order_update["orderId"]
-        client_order_id = order_update["clientOrderId"]
-        trading_pair = order_update["symbol"]
-        order_status = order_update["orderStatus"]
+    async def _process_order_update(self, msg: Dict[str, Any]):
+        client_order_id = msg["clientOrderId"]
+        order_status = msg["orderStatus"]
 
         if order_status not in ["submitted", "partial-filled", "filled", "partially-canceled", "canceled", "canceling"]:
-            self.logger().debug(f"Unrecognized order update response - {order_update}")
+            self.logger().debug(f"Unrecognized order update response - {msg}")
 
         tracked_order = self._in_flight_orders.get(client_order_id, None)
 
-        if tracked_order is None:
-            return
+        if tracked_order is not None:
+            order_update = OrderUpdate(
+                            trading_pair=tracked_order.trading_pair,
+                            update_timestamp=msg["orderCreateTime"] * 1e-3,
+                            new_state=CONSTANTS.ORDER_STATE[msg["orderStatus"]],
+                            client_order_id=client_order_id,
+                        )
+            self._order_tracker.process_order_update(order_update=order_update)
 
-        if order_status == "filled":
-            tracked_order.last_state = order_status
-
-            event = (self.MARKET_BUY_ORDER_COMPLETED_EVENT_TAG
-                     if tracked_order.trade_type == TradeType.BUY
-                     else self.MARKET_SELL_ORDER_COMPLETED_EVENT_TAG)
-            event_class = (BuyOrderCompletedEvent
-                           if tracked_order.trade_type == TradeType.BUY
-                           else SellOrderCompletedEvent)
+        
+           # event = (self.MARKET_BUY_ORDER_COMPLETED_EVENT_TAG
+           #          if tracked_order.trade_type == TradeType.BUY
+            #         else self.MARKET_SELL_ORDER_COMPLETED_EVENT_TAG)
+          # event_class = (BuyOrderCompletedEvent
+           #                if tracked_order.trade_type == TradeType.BUY
+           #                else SellOrderCompletedEvent)
 
             try:
                 await asyncio.wait_for(tracked_order.wait_until_completely_filled(), timeout=1)
@@ -419,11 +421,11 @@ class HuobiExchange(ExchangePyBase):
                                f"has completed according to order delta websocket API.")
             self.stop_tracking_order(tracked_order.client_order_id)
 
-        if order_status == "canceled":
-            tracked_order.last_state = order_status
-            self.logger().info(f"The order {tracked_order.client_order_id} has been canceled "
-                               f"according to order delta websocket API.")
-            self.stop_tracking_order(tracked_order.client_order_id)
+        #if order_status == "canceled":
+         #   tracked_order.last_state = order_status
+         #   self.logger().info(f"The order {tracked_order.client_order_id} has been canceled "
+          #                     f"according to order delta websocket API.")
+         #   self.stop_tracking_order(tracked_order.client_order_id)
 
     async def _process_trade_event(self, trade_event: Dict[str, Any]):
         order_id = trade_event["orderId"]
@@ -566,11 +568,10 @@ class HuobiExchange(ExchangePyBase):
         if tracked_order is None:
             raise ValueError(f"Failed to cancel order - {order_id}. Order not found.")
         path_url = CONSTANTS.CANCEL_ORDER_URL.format(tracked_order.exchange_order_id)
-        response = await self._api_delete(path_url=path_url, is_auth_required=True)
-        if tracked_order.exchange_order_id in response["data"].get("cancelledOrderIds", []):
+        response = await self._api_post(path_url=path_url, is_auth_required=True)
+        if response.get("status") == "ok":
             return True
-        else:
-            return False
+        return False
         
 
 
@@ -586,10 +587,9 @@ class HuobiExchange(ExchangePyBase):
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
         
-        url = CONSTANTS.REST_URL + CONSTANTS.TICKER_URL
-        resp_json = await self._api_request(
-            path_url=url,
-            method=RESTMethod.GET,
+        url = web_utils.public_rest_url(path_url=CONSTANTS.TICKER_URL)
+        resp_json = await self._api_get(
+            path_url=url
         )
         resp_record = [o for o in resp_json["data"] if o["symbol"] == web_utils.convert_to_exchange_trading_pair(trading_pair)][0]
         return float(resp_record["close"])

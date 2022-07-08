@@ -1,6 +1,8 @@
 # A single source of truth for constant variables related to the exchange
 
 from hummingbot.core.api_throttler.data_types import RateLimit
+from hummingbot.core.data_type.in_flight_order import OrderState
+
 
 
 EXCHANGE_NAME = "huobi"
@@ -30,6 +32,7 @@ API_VERSION_NEW = "/v2"
 SERVER_TIME_URL = "/v1/common/timestamp"
 ACCOUNT_ID_URL = "/v1/account/accounts"
 ACCOUNT_BALANCE_URL = "/v1/account/accounts/{}/balance"
+OPEN_ORDERS_URL = "/v1/order/openOrders"
 ORDER_DETAIL_URL = "/v1/order/orders/{}"
 PLACE_ORDER_URL = "/v1/order/orders/place"
 CANCEL_ORDER_URL = "/v1/order/orders/{}/submitcancel"
@@ -61,3 +64,14 @@ RATE_LIMITS = [
     RateLimit(limit_id=BATCH_CANCEL_URL, limit=50, time_interval=2),
 
 ]
+
+# Order States
+ORDER_STATE = {
+    "rejected": OrderState.FAILED,
+    "canceled": OrderState.CANCELED,
+    "submitted": OrderState.OPEN,
+    "partial-filled": OrderState.PARTIALLY_FILLED,
+    "filled": OrderState.FILLED,
+    "partial-canceled": OrderState.CANCELED,
+    "created": OrderState.PENDING_CREATE
+}
