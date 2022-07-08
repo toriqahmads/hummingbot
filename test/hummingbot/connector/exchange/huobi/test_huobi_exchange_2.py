@@ -831,16 +831,11 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             self.async_run_with_timeout, self.exchange._update_time_synchronizer())
     
     @aioresponses()
-    @aioresponses()
-    def test_update_balances(self, mock_api, mock_account_id):
+    def test_update_balances(self, mock_api):
             url = self.balance_url
             response = self.balance_request_mock_response_for_base_and_quote
 
-            mock_api.get(re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?")), body=json.dumps(response))
-            
-            account_id_url = web_utils.public_rest_url(CONSTANTS.ACCOUNT_ID_URL)
-            test_id = 1000001
-            mock_account_id.get(re.compile(f"^{account_id_url}".replace(".", r"\.").replace("?", r"\?")), body=json.dumps(test_id))
+            mock_api.get(url, body=json.dumps(response))
             
             self.async_run_with_timeout(self.exchange._update_balances())
 
