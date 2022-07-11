@@ -23,49 +23,42 @@ class HuobiAuth(AuthBase):
         return OrderedDict(sorted(dictionary.items(), key=lambda t: t[0]))
 
     async def rest_authenticate(self, request: RESTRequest) -> RESTRequest:
-        params = request.params
-        updated_params = self.add_auth_to_params(...)
-        request.params = params
-        raise NotImplementedError
+
+        auth_params = self.add_auth_to_params(request=request)
+        request.params = auth_params
+
+        return request
 
     async def ws_authenticate(self, request: WSRequest) -> WSRequest:
-        raise NotImplementedError
+        auth_params = self.add_auth_to_params(request=request, is_ws=True)
+        request.params = auth_params
 
-    def add_auth_to_params(self,
-                           method: str,
-                           path_url: str,
-                           params: Dict[str, Any] = None,
-                           is_ws: bool = False) -> Dict[str, Any]:
+        return request
+
+    def add_auth_to_params(self, request: RESTRequest, is_ws: bool = False) -> Dict[str, Any]:
         timestamp: str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-        if not params:
-            params = {}
-
+        path_url = f"/api{request.url.split('/api')[-1]}"
+        params = request.params or {}
+        params.update({
+            "accessKey": self.api_key,
+            "signatureMethod": "HmacSHA256",
+            "timestamp": timestamp
+        })
         if is_ws:
             params.update({
-                "accessKey": self.api_key,
-                "signatureMethod": "HmacSHA256",
                 "signatureVersion": "2.1",
-                "timestamp": timestamp
             })
         else:
             params.update({
-                "AccessKeyId": self.api_key,
-                "SignatureMethod": "HmacSHA256",
-                "SignatureVersion": "2",
-                "Timestamp": timestamp
+                "signatureVersion": "2",
             })
 
         sorted_params = self.keysort(params)
-        signature = self.generate_signature(method=method,
+        signature = self.generate_signature(method=request.method.value.upper(),
                                             path_url=path_url,
                                             params=sorted_params,
                                             is_ws=is_ws)
-
-        if is_ws:
-            sorted_params["signature"] = signature
-        else:
-            sorted_params["Signature"] = signature
+        sorted_params["signature"] = signature
         return sorted_params
 
     def generate_signature(self,
