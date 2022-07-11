@@ -1,22 +1,21 @@
 import re
 from decimal import Decimal
-from typing import Optional, Tuple, Dict, Any, Callable
+from typing import Any, Callable, Dict, Optional, Tuple
 
+import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
 from hummingbot.client.config.config_methods import using_exchange
 from hummingbot.client.config.config_var import ConfigVar
+from hummingbot.connector.exchange.huobi.huobi_ws_post_processor import HuobiWSPostProcessor
 from hummingbot.connector.time_synchronizer import TimeSynchronizer
 from hummingbot.connector.utils import TimeSynchronizerRESTPreProcessor
-from hummingbot.core.web_assistant.auth import AuthBase
-from hummingbot.connector.exchange.huobi.huobi_ws_post_processor import HuobiWSPostProcessor
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.trade_fee import TradeFeeSchema
-from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
-import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
+from hummingbot.core.web_assistant.auth import AuthBase
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod
-
-
+from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
 DEFAULT_FEES = TradeFeeSchema(
+    buy_percent_fee_deducted_from_returns=True,
     maker_percent_fee_decimal=Decimal("0.002"),
     taker_percent_fee_decimal=Decimal("0.002"),
 )
@@ -58,10 +57,10 @@ def convert_to_exchange_trading_pair(hb_trading_pair: str) -> str:
 
 
 def build_api_factory(throttler: Optional[AsyncThrottler] = None,
-        time_synchronizer: Optional[TimeSynchronizer] = None,
-        domain: str = None,
-        time_provider: Optional[Callable] = None,
-        auth: Optional[AuthBase] = None, ) -> WebAssistantsFactory:
+                      time_synchronizer: Optional[TimeSynchronizer] = None,
+                      domain: str = None,
+                      time_provider: Optional[Callable] = None,
+                      auth: Optional[AuthBase] = None, ) -> WebAssistantsFactory:
     throttler = throttler or AsyncThrottler(CONSTANTS.RATE_LIMITS)
     time_synchronizer = time_synchronizer or TimeSynchronizer()
     time_provider = time_provider or (lambda: get_current_server_time(
@@ -76,6 +75,7 @@ def build_api_factory(throttler: Optional[AsyncThrottler] = None,
             TimeSynchronizerRESTPreProcessor(synchronizer=time_synchronizer, time_provider=time_provider),
         ])
     return api_factory
+
 
 def build_api_factory_without_time_synchronizer_pre_processor(throttler: AsyncThrottler) -> WebAssistantsFactory:
     api_factory = WebAssistantsFactory(throttler=throttler,)
@@ -97,6 +97,7 @@ async def get_current_server_time(
     server_time = response["data"]
     return server_time
 
+
 def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     """
     Verifies if a trading pair is enabled to operate with based on its exchange information
@@ -104,6 +105,7 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     :return: True if the trading pair is enabled, False otherwise
     """
     return exchange_info.get("te", None)
+
 
 def public_rest_url(path_url: str, domain: str = None) -> str:
     """
@@ -115,6 +117,7 @@ def public_rest_url(path_url: str, domain: str = None) -> str:
     """
     return CONSTANTS.REST_URL + path_url
 
+
 def private_rest_url(path_url: str, domain: str = None) -> str:
     """
     Creates a full URL for provided REST endpoint
@@ -124,6 +127,7 @@ def private_rest_url(path_url: str, domain: str = None) -> str:
     :return: the full URL to the endpoint
     """
     return public_rest_url(path_url=path_url, domain=domain)
+
 
 KEYS = {
     "huobi_api_key":
