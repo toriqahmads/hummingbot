@@ -67,7 +67,7 @@ class HuobiAuth(AuthBase):
                            params: Dict[str, Any],
                            is_ws: bool = False) -> str:
 
-        query_endpoint = f"/v1{path_url}" if not is_ws else path_url
+        query_endpoint = path_url
         encoded_params_str = urlencode(params)
         payload = "\n".join([method.upper(), self.hostname, query_endpoint, encoded_params_str])
         digest = hmac.new(self.secret_key.encode("utf8"), payload.encode("utf8"), hashlib.sha256).digest()
