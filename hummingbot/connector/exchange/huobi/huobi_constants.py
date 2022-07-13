@@ -17,7 +17,7 @@ WS_HEARTBEAT_TIME_INTERVAL = 30  # seconds
 TRADE_CHANNEL_SUFFIX = "trade.detail"
 ORDERBOOK_CHANNEL_SUFFIX = "depth.step0"
 
-SYMBOLS_URL = "/v1/settings/common/symbols"
+SYMBOLS_URL = "/v2/settings/common/symbols"
 TRADE_RULES_URL = "/v1/settings/common/market-symbols"
 TICKER_URL = "/market/tickers"
 DEPTH_URL = "/market/depth"
