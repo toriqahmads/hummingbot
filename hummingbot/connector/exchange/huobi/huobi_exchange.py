@@ -127,8 +127,8 @@ class HuobiExchange(ExchangePyBase):
             for account in accounts["data"]:
                 if account["state"] == "working" and account["type"] == "spot":
                     self._account_id = str(account["id"])
-        except Exception as e:
-            raise ValueError(f"Unable to retrieve account id: {e}")
+        except Exception:
+            raise ValueError(f"Unable to retrieve account id.\n{accounts['err-msg']}")
 
     async def _update_balances(self):
 
