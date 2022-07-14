@@ -3,7 +3,7 @@ import hashlib
 import hmac
 from collections import OrderedDict
 from datetime import datetime
-from typing import Any, Dict, Union
+from typing import Any, Dict
 from urllib.parse import urlencode
 
 from hummingbot.core.web_assistant.auth import AuthBase
@@ -24,54 +24,58 @@ class HuobiAuth(AuthBase):
 
     async def rest_authenticate(self, request: RESTRequest) -> RESTRequest:
 
-        auth_params = self.add_auth_to_params(request=request)
+        auth_params = self.add_auth_to_params_for_REST(request=request)
         request.params = auth_params
 
         return request
 
     async def ws_authenticate(self, request: WSRequest) -> WSRequest:
-        auth_params = self.add_auth_to_params(request=request, is_ws=True)
+        auth_params = self.add_auth_to_params_for_WS(request=request)
         request.params = auth_params
 
         return request
 
-    def add_auth_to_params(self, request: Union[RESTRequest, WSRequest], is_ws: bool = False) -> Dict[str, Any]:
-        # todo: split into rest and ws methods
+    def add_auth_to_params_for_REST(self, request: RESTRequest) -> Dict[str, Any]:
         timestamp: str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-        path_url = request.throttler_limit_id
+        path_url = f"/v1{request.url.split('v1')[-1]}"
         params = request.params or {}
-        if is_ws:
-            params.update({
-                "accessKey": self.api_key,
-                "signatureMethod": "HmacSHA256",
-                "signatureVersion": "2.1",
-                "timestamp": timestamp
-            })
-        else:
-            params.update({
-                "AccessKeyId": self.api_key,
-                "SignatureMethod": "HmacSHA256",
-                "SignatureVersion": "2",
-                "Timestamp": timestamp
-            })
-
+        params.update({
+            "AccessKeyId": self.api_key,
+            "SignatureMethod": "HmacSHA256",
+            "SignatureVersion": "2",
+            "Timestamp": timestamp
+        })
         sorted_params = self.keysort(params)
         signature = self.generate_signature(method=request.method.value.upper(),
                                             path_url=path_url,
                                             params=sorted_params,
-                                            is_ws=is_ws)
+                                            )
+        sorted_params["Signature"] = signature
+        return sorted_params
 
-        if is_ws:
-            sorted_params["signature"] = signature
-        else:
-            sorted_params["Signature"] = signature
+    def add_auth_to_params_for_WS(self, request: WSRequest) -> Dict[str, Any]:
+        timestamp: str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        path_url = "/ws/v2"
+        params = request.params or {}
+        params.update({
+            "accessKey": self.api_key,
+            "signatureMethod": "HmacSHA256",
+            "signatureVersion": "2.1",
+            "timestamp": timestamp
+        })
+        sorted_params = self.keysort(params)
+        signature = self.generate_signature(method=request.method.value.upper(),
+                                            path_url=path_url,
+                                            params=sorted_params,
+                                            )
+        sorted_params["signature"] = signature
         return sorted_params
 
     def generate_signature(self,
                            method: str,
                            path_url: str,
                            params: Dict[str, Any],
-                           is_ws: bool = False) -> str:
+                           ) -> str:
 
         query_endpoint = path_url
         encoded_params_str = urlencode(params)
