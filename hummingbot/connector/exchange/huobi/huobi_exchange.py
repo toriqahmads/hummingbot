@@ -124,7 +124,7 @@ class HuobiExchange(ExchangePyBase):
     async def _update_account_id(self) -> str:
         accounts = await self._api_get(path_url=CONSTANTS.ACCOUNT_ID_URL, is_auth_required=True)
         try:
-            for account in accounts:
+            for account in accounts["data"]:
                 if account["state"] == "working" and account["type"] == "spot":
                     self._account_id = str(account["id"])
         except Exception as e:
