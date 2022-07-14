@@ -3,7 +3,7 @@ import hashlib
 import hmac
 from collections import OrderedDict
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Union
 from urllib.parse import urlencode
 
 from hummingbot.core.web_assistant.auth import AuthBase
@@ -35,22 +35,24 @@ class HuobiAuth(AuthBase):
 
         return request
 
-    def add_auth_to_params(self, request: RESTRequest, is_ws: bool = False) -> Dict[str, Any]:
+    def add_auth_to_params(self, request: Union[RESTRequest, WSRequest], is_ws: bool = False) -> Dict[str, Any]:
+        # todo: split into rest and ws methods
         timestamp: str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-        path_url = f"/api{request.url.split('/api')[-1]}"
+        path_url = request.throttler_limit_id
         params = request.params or {}
-        params.update({
-            "accessKey": self.api_key,
-            "signatureMethod": "HmacSHA256",
-            "timestamp": timestamp
-        })
         if is_ws:
             params.update({
+                "accessKey": self.api_key,
+                "signatureMethod": "HmacSHA256",
                 "signatureVersion": "2.1",
+                "timestamp": timestamp
             })
         else:
             params.update({
-                "signatureVersion": "2",
+                "AccessKeyId": self.api_key,
+                "SignatureMethod": "HmacSHA256",
+                "SignatureVersion": "2",
+                "Timestamp": timestamp
             })
 
         sorted_params = self.keysort(params)
@@ -58,7 +60,11 @@ class HuobiAuth(AuthBase):
                                             path_url=path_url,
                                             params=sorted_params,
                                             is_ws=is_ws)
-        sorted_params["signature"] = signature
+
+        if is_ws:
+            sorted_params["signature"] = signature
+        else:
+            sorted_params["Signature"] = signature
         return sorted_params
 
     def generate_signature(self,
