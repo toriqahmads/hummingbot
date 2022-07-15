@@ -24,32 +24,20 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
         await ws.connect(ws_url=CONSTANTS.WS_PRIVATE_URL, ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
         return ws
 
-
-    async def _authenticate_client(self, ws:WSAssistant):
+    async def _authenticate_client(self, ws: WSAssistant):
         """
         Sends an Authentication request to Huobi's WebSocket API Server
         """
         try:
-            signed_params = self._auth.add_auth_to_params(
-                method="get",
-                path_url="/ws/v2",
-                is_ws=True,
-            )
-            auth_request: WSJSONRequest = WSJSONRequest(
+            ws_request: WSJSONRequest = WSJSONRequest(
                 {
                     "action": "req",
                     "ch": "auth",
-                    "params": {
-                        "authType": "api",
-                        "accessKey": signed_params["accessKey"],
-                        "signatureMethod": signed_params["signatureMethod"],
-                        "signatureVersion": signed_params["signatureVersion"],
-                        "timestamp": signed_params["timestamp"],
-                        "signature": signed_params["signature"],
-                    },
+                    "params": {},
                 }
             )
-            await ws.send(auth_request)
+            auth_ws_request = await self._auth.ws_authenticate(ws_request)
+            await ws.send(auth_ws_request)
             resp: WSResponse = await ws.receive()
             auth_response = resp.data
             if auth_response.get("code", 0) != 200:
@@ -91,8 +79,8 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
         """
         try:
             await self._authenticate_client(websocket_assistant)
-            await self._subscribe_topic(CONSTANTS.HUOBI_TRADE_DETAILS_TOPIC, websocket_assistant)
-            await self._subscribe_topic(CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC, websocket_assistant)
+            await self._subscribe_topic(CONSTANTS.HUOBI_TRADE_DETAILS_TOPIC.format("*"), websocket_assistant)
+            await self._subscribe_topic(CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC.format("*"), websocket_assistant)
             await self._subscribe_topic(CONSTANTS.HUOBI_ACCOUNT_UPDATE_TOPIC, websocket_assistant)
         except asyncio.CancelledError:
             raise
@@ -102,9 +90,9 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
     async def _process_websocket_messages(self, websocket_assistant: WSAssistant, queue: asyncio.Queue):
         async for ws_response in websocket_assistant.iter_messages():
-                    data = ws_response.data
-                    if data["action"] == "ping":
-                        pong_request = WSJSONRequest(payload={"action": "pong", "data": data["data"]})
-                        await websocket_assistant.send(request=pong_request)
-                        continue
-                    queue.put_nowait(data)
+            data = ws_response.data
+            if data["action"] == "ping":
+                pong_request = WSJSONRequest(payload={"action": "pong", "data": data["data"]})
+                await websocket_assistant.send(request=pong_request)
+                continue
+            queue.put_nowait(data)

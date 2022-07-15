@@ -7,7 +7,7 @@ from typing import Any, Dict
 from urllib.parse import urlencode
 
 from hummingbot.core.web_assistant.auth import AuthBase
-from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSRequest
+from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSJSONRequest
 
 HUOBI_HOST_NAME = "api.huobi.pro"
 
@@ -29,9 +29,9 @@ class HuobiAuth(AuthBase):
 
         return request
 
-    async def ws_authenticate(self, request: WSRequest) -> WSRequest:
+    async def ws_authenticate(self, request: WSJSONRequest) -> WSJSONRequest:
         auth_params = self.add_auth_to_params_for_WS(request=request)
-        request.params = auth_params
+        request.payload['params'] = auth_params
 
         return request
 
@@ -53,10 +53,10 @@ class HuobiAuth(AuthBase):
         sorted_params["Signature"] = signature
         return sorted_params
 
-    def add_auth_to_params_for_WS(self, request: WSRequest) -> Dict[str, Any]:
+    def add_auth_to_params_for_WS(self, request: WSJSONRequest) -> Dict[str, Any]:
         timestamp: str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         path_url = "/ws/v2"
-        params = request.params or {}
+        params = request.payload.get("params") or {}
         params.update({
             "accessKey": self.api_key,
             "signatureMethod": "HmacSHA256",
@@ -64,11 +64,12 @@ class HuobiAuth(AuthBase):
             "timestamp": timestamp
         })
         sorted_params = self.keysort(params)
-        signature = self.generate_signature(method=request.method.value.upper(),
+        signature = self.generate_signature(method="get",
                                             path_url=path_url,
                                             params=sorted_params,
                                             )
         sorted_params["signature"] = signature
+        sorted_params["authType"] = "api"
         return sorted_params
 
     def generate_signature(self,

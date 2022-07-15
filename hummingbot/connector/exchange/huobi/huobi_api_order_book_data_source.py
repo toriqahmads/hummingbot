@@ -2,7 +2,6 @@ import asyncio
 from typing import Any, Dict, List, Optional
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
-#from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
 from hummingbot.connector.exchange.huobi.huobi_utils import (
     convert_from_exchange_trading_pair,
     convert_to_exchange_trading_pair,
@@ -37,8 +36,7 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
         return ws
 
-    async def get_last_traded_prices(self,
-                                     trading_pairs: List[str]) -> Dict[str, float]:
+    async def get_last_traded_prices(self, trading_pairs: List[str]) -> Dict[str, float]:
         return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
 
     async def request_new_orderbook_snapshot(self, trading_pair: str) -> Dict[str, Any]:
@@ -103,12 +101,12 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
         trading_pair = raw_message["ch"].split(".")[1]
         for data in raw_message["tick"]["data"]:
             trade_message: OrderBookMessage = self.trade_message_from_exchange(
-            msg=data,
-            metadata={"trading_pair": convert_from_exchange_trading_pair(trading_pair)}
+                msg=data,
+                metadata={"trading_pair": convert_from_exchange_trading_pair(trading_pair)}
             )
             message_queue.put_nowait(trade_message)
 
-    async def listen_for_order_book_diffs(self, output: asyncio.Queue):
+    async def listen_for_order_book_diffs(self, ev_loop: asyncio.AbstractEventLoop, output: asyncio.Queue):
         """
         Huobi connector sends snapshot messages instead of diff messages at 1-second intervals.
         Hence there is no need for requesting a new snapshot every 1 hour.
