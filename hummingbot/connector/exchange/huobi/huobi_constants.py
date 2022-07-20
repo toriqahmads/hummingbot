@@ -11,7 +11,7 @@ REST_URL = "https://api.huobi.pro"
 WS_PUBLIC_URL = "wss://api.huobi.pro/ws"
 WS_PRIVATE_URL = "wss://api.huobi.pro/ws/v2"
 
-WS_HEARTBEAT_TIME_INTERVAL = 30  # seconds
+WS_HEARTBEAT_TIME_INTERVAL = 5  # seconds
 
 # Websocket event types
 TRADE_CHANNEL_SUFFIX = "trade.detail"

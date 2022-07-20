@@ -181,3 +181,14 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
             "price": msg["price"]
         }
         return OrderBookMessage(OrderBookMessageType.TRADE, content, timestamp=msg_ts)
+
+    async def _process_websocket_messages(self, websocket_assistant: WSAssistant):
+        async for ws_response in websocket_assistant.iter_messages():
+            data: Dict[str, Any] = ws_response.data
+            if "ping" in data:
+                pong_request = WSJSONRequest(payload={"pong": data["ping"]})
+                await websocket_assistant.send(request=pong_request)
+                continue
+            channel: str = self._channel_originating_message(event_message=data)
+            if channel in [self._diff_messages_queue_key, self._trade_messages_queue_key]:
+                self._message_queue[channel].put_nowait(data)

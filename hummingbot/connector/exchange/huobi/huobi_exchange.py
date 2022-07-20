@@ -228,7 +228,7 @@ class HuobiExchange(ExchangePyBase):
         tracked_orders = list(self.in_flight_orders.values())
         for tracked_order in tracked_orders:
             order_update = await self.get_order_status(tracked_order)
-            if isinstance(order_update, Exception):
+            if isinstance(order_update, Exception) or order_update.get("status") != "ok":
                 self.logger().network(
                     f"Error fetching status update for the order {tracked_order.client_order_id}: {order_update}.",
                     app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
@@ -291,7 +291,8 @@ class HuobiExchange(ExchangePyBase):
                 elif channel.startswith("orders"):
                     safe_ensure_future(self._process_order_update(data))
                 elif channel.startswith("trade.clearing"):
-                    safe_ensure_future(self._process_trade_event(data))
+                    if data["eventType"] == "trade":
+                        safe_ensure_future(self._process_trade_event(data))
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -360,13 +361,13 @@ class HuobiExchange(ExchangePyBase):
             await self._update_account_id()
         params = {
             "account-id": self._account_id,
-            "amount": f"{amount:f}",
+            "amount": f"{amount}",
             "client-order-id": order_id,
             "symbol": web_utils.convert_to_exchange_trading_pair(trading_pair),
             "type": f"{side}-{order_type_str}",
         }
         if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
-            params["price"] = f"{price:f}"
+            params["price"] = f"{price}"
         exchange_order_id = await self._api_post(
             path_url=path_url,
             params=params,
@@ -374,85 +375,6 @@ class HuobiExchange(ExchangePyBase):
             is_auth_required=True
         )
         return str(exchange_order_id["data"]), self.current_timestamp
-
-    async def execute_buy(self,
-                          order_id: str,
-                          trading_pair: str,
-                          amount: Decimal,
-                          order_type: OrderType,
-                          price: Optional[Decimal] = s_decimal_0):
-        trading_rule = self._trading_rules[trading_pair]
-        if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
-            decimal_amount = self.quantize_order_amount(trading_pair, amount)
-            decimal_price = self.quantize_order_price(trading_pair, price)
-            if decimal_amount < trading_rule.min_order_size:
-                raise ValueError(f"Buy order amount {decimal_amount} is lower than the minimum order size "
-                                 f"{trading_rule.min_order_size}.")
-        try:
-            exchange_order_id = await self._place_order(order_id, trading_pair, decimal_amount, True, order_type, decimal_price)
-            self.start_tracking_order(
-                client_order_id=order_id,
-                exchange_order_id=exchange_order_id,
-                trading_pair=trading_pair,
-                order_type=order_type,
-                trade_type=TradeType.BUY,
-                price=decimal_price,
-                amount=decimal_amount
-            )
-            tracked_order = self.in_flight_orders.get(order_id)
-            if tracked_order is not None:
-                self.logger().info(f"Created {order_type} buy order {order_id} for {decimal_amount} {trading_pair}.")
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.stop_tracking_order(order_id)
-            order_type_str = order_type.name.lower()
-            self.logger().network(
-                f"Error submitting buy {order_type_str} order to Huobi for "
-                f"{decimal_amount} {trading_pair} "
-                f"{decimal_price}.",
-                exc_info=True,
-                app_warning_msg="Failed to submit buy order to Huobi. Check API key and network connection."
-            )
-
-    async def execute_sell(self,
-                           order_id: str,
-                           trading_pair: str,
-                           amount: Decimal,
-                           order_type: OrderType,
-                           price: Optional[Decimal] = s_decimal_0):
-        trading_rule = self._trading_rules[trading_pair]
-        decimal_amount = self.quantize_order_amount(trading_pair, amount)
-        decimal_price = self.quantize_order_price(trading_pair, price)
-        if decimal_amount < trading_rule.min_order_size:
-            raise ValueError(f"Sell order amount {decimal_amount} is lower than the minimum order size "
-                             f"{trading_rule.min_order_size}.")
-        try:
-            exchange_order_id = await self._place_order(order_id, trading_pair, decimal_amount, False, order_type, decimal_price)
-            self.start_tracking_order(
-                client_order_id=order_id,
-                exchange_order_id=exchange_order_id,
-                trading_pair=trading_pair,
-                order_type=order_type,
-                trade_type=TradeType.SELL,
-                price=decimal_price,
-                amount=decimal_amount
-            )
-            tracked_order = self.in_flight_orders.get(order_id)
-            if tracked_order is not None:
-                self.logger().info(f"Created {order_type} sell order {order_id} for {decimal_amount} {trading_pair}.")
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            self.stop_tracking_order(order_id)
-            order_type_str = order_type.name.lower()
-            self.logger().network(
-                f"Error submitting sell {order_type_str} order to Huobi for "
-                f"{decimal_amount} {trading_pair} "
-                f"{decimal_price}.",
-                exc_info=True,
-                app_warning_msg="Failed to submit sell order to Huobi. Check API key and network connection."
-            )
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         if tracked_order is None:
