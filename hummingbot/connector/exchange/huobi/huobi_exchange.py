@@ -215,25 +215,36 @@ class HuobiExchange(ExchangePyBase):
         """
         try:
             exchange_order_id = await tracked_order.get_exchange_order_id()
+            if not exchange_order_id:
+                return None
             path_url = CONSTANTS.ORDER_DETAIL_URL.format(exchange_order_id)
             params = {
                 "order_id": exchange_order_id
             }
             update = await self._api_get(path_url=path_url, params=params, is_auth_required=True, limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
             return update
-        except Exception as e:
-            return e
+        except Exception:
+            raise
 
     async def _update_order_status(self):
         tracked_orders = list(self.in_flight_orders.values())
         for tracked_order in tracked_orders:
-            order_update = await self.get_order_status(tracked_order)
-            if isinstance(order_update, Exception) or order_update.get("status") != "ok":
+            try:
+                order_update = await self.get_order_status(tracked_order)
+            except Exception:
                 self.logger().network(
                     f"Error fetching status update for the order {tracked_order.client_order_id}: {order_update}.",
                     app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
                 )
                 await self._order_tracker.process_order_not_found(tracked_order.client_order_id)
+                continue
+            if order_update is None:
+                continue
+            if order_update.get("status") != "ok":
+                self.logger().network(
+                    f"Error fetching status update for the order {tracked_order.client_order_id}: {order_update}.",
+                    app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
+                )
                 continue
             order_state = order_update["data"]["state"]
             # possible order states are "submitted", "partial-filled", "filled", "canceled"
