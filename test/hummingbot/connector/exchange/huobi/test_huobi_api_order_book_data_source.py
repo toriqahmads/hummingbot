@@ -262,7 +262,7 @@ class HuobiAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         mock_queue.get.side_effect = [orderbook_message, asyncio.CancelledError()]
         self.data_source._message_queue[CONSTANTS.ORDERBOOK_CHANNEL_SUFFIX] = mock_queue
         msg_queue = asyncio.Queue()
-        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_order_book_diffs(msg_queue))
+        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_order_book_diffs(self.ev_loop, msg_queue))
 
         try:
             self.async_run_with_timeout(self.listening_task)
@@ -279,7 +279,7 @@ class HuobiAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         mock_queue.get.side_effect = [orderbook_message, asyncio.CancelledError()]
         self.data_source._message_queue[CONSTANTS.ORDERBOOK_CHANNEL_SUFFIX] = mock_queue
         msg_queue = asyncio.Queue()
-        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_order_book_diffs(msg_queue))
+        self.listening_task = self.ev_loop.create_task(self.data_source.listen_for_order_book_diffs(self.ev_loop, msg_queue))
 
         msg = self.async_run_with_timeout(msg_queue.get())
 
