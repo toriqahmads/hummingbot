@@ -1,27 +1,28 @@
 import asyncio
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
-from hummingbot.connector.exchange.huobi.huobi_utils import (
-    convert_from_exchange_trading_pair,
-    convert_to_exchange_trading_pair,
-)
+from hummingbot.connector.exchange.huobi.huobi_utils import public_rest_url
 from hummingbot.core.data_type.common import TradeType
 from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, RESTRequest, RESTResponse, WSJSONRequest
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod, WSJSONRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
+if TYPE_CHECKING:
+    from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
+
 
 class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
-    _haobds_logger: Optional[HummingbotLogger] = None
+    _logger: Optional[HummingbotLogger] = None
 
     def __init__(self,
                  trading_pairs: List[str],
-                 connector,
+                 connector: 'HuobiExchange',
                  api_factory: WebAssistantsFactory,
                  ):
         super().__init__(trading_pairs)
@@ -39,24 +40,22 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def get_last_traded_prices(self, trading_pairs: List[str]) -> Dict[str, float]:
         return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
 
-    async def request_new_orderbook_snapshot(self, trading_pair: str) -> Dict[str, Any]:
+    async def _request_new_orderbook_snapshot(self, trading_pair: str) -> Dict[str, Any]:
         rest_assistant = await self._api_factory.get_rest_assistant()
-        url = CONSTANTS.REST_URL + CONSTANTS.DEPTH_URL
+        url = public_rest_url(CONSTANTS.DEPTH_URL)
+        exchange_symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
         # when type is set to "step0", the default value of "depth" is 150
-        params: Dict = {"symbol": convert_to_exchange_trading_pair(trading_pair), "type": "step0"}
-        request = RESTRequest(method=RESTMethod.GET,
-                              url=url,
-                              params=params)
-        response: RESTResponse = await rest_assistant.call(request=request)
-
-        if response.status != 200:
-            raise IOError(f"Error fetching Huobi market snapshot for {trading_pair}. "
-                          f"HTTP status is {response.status}.")
-        snapshot_data: Dict[str, Any] = await response.json()
+        params: Dict = {"symbol": exchange_symbol, "type": "step0"}
+        snapshot_data = await rest_assistant.execute_request(
+            url=url,
+            params=params,
+            method=RESTMethod.GET,
+            throttler_limit_id=CONSTANTS.DEPTH_URL,
+        )
         return snapshot_data
 
     async def _order_book_snapshot(self, trading_pair: str) -> OrderBookMessage:
-        snapshot: Dict[str, Any] = await self.request_new_orderbook_snapshot(trading_pair)
+        snapshot: Dict[str, Any] = await self._request_new_orderbook_snapshot(trading_pair)
         snapshot_msg: OrderBookMessage = self.snapshot_message_from_exchange(
             msg=snapshot,
             metadata={"trading_pair": trading_pair},
@@ -67,13 +66,14 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def _subscribe_channels(self, ws: WSAssistant):
         try:
             for trading_pair in self._trading_pairs:
+                exchange_symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
                 subscribe_orderbook_request: WSJSONRequest = WSJSONRequest({
-                    "sub": f"market.{convert_to_exchange_trading_pair(trading_pair)}.depth.step0",
-                    "id": convert_to_exchange_trading_pair(trading_pair)
+                    "sub": f"market.{exchange_symbol}.depth.step0",
+                    "id": str(uuid.uuid4())
                 })
                 subscribe_trade_request: WSJSONRequest = WSJSONRequest({
-                    "sub": f"market.{convert_to_exchange_trading_pair(trading_pair)}.trade.detail",
-                    "id": convert_to_exchange_trading_pair(trading_pair)
+                    "sub": f"market.{exchange_symbol}.trade.detail",
+                    "id": str(uuid.uuid4())
                 })
                 await ws.send(subscribe_orderbook_request)
                 await ws.send(subscribe_trade_request)
@@ -98,11 +98,12 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _parse_trade_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
 
-        trading_pair = raw_message["ch"].split(".")[1]
+        ex_symbol = raw_message["ch"].split(".")[1]
+        trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=ex_symbol)
         for data in raw_message["tick"]["data"]:
             trade_message: OrderBookMessage = self.trade_message_from_exchange(
                 msg=data,
-                metadata={"trading_pair": convert_from_exchange_trading_pair(trading_pair)}
+                metadata={"trading_pair": trading_pair}
             )
             message_queue.put_nowait(trade_message)
 
@@ -149,13 +150,13 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
         msg_channel = msg["ch"]
         content = {
             "update_id": msg["tick"]["ts"],
-            "bids": msg["tick"]["bids"],
-            "asks": msg["tick"]["asks"]
+            "bids": msg["tick"].get("bids", []),
+            "asks": msg["tick"].get("asks", [])
         }
         if "trading_pair" in msg:
             content["trading_pair"] = msg["trading_pair"]
         else:
-            content["trading_pair"] = convert_from_exchange_trading_pair(msg_channel.split(".")[1])
+            content["trading_pair"] = self._connector.trading_pair_associated_to_exchange_symbol(msg_channel.split(".")[1])
 
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, content, timestamp=msg_ts)
 

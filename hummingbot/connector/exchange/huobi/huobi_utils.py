@@ -43,19 +43,6 @@ def split_trading_pair(trading_pair: str) -> Optional[Tuple[str, str]]:
         return None
 
 
-def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> Optional[str]:
-    if split_trading_pair(exchange_trading_pair) is None:
-        return None
-    # Huobi uses lowercase (btcusdt)
-    base_asset, quote_asset = split_trading_pair(exchange_trading_pair)
-    return f"{base_asset.upper()}-{quote_asset.upper()}"
-
-
-def convert_to_exchange_trading_pair(hb_trading_pair: str) -> str:
-    # Huobi uses lowercase (btcusdt)
-    return hb_trading_pair.replace("-", "").lower()
-
-
 def build_api_factory(throttler: Optional[AsyncThrottler] = None,
                       time_synchronizer: Optional[TimeSynchronizer] = None,
                       domain: str = None,

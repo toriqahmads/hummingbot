@@ -36,7 +36,8 @@ class HuobiAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         self.listening_task = None
         self.async_tasks: List[asyncio.Task] = []
         self.connector = AsyncMock()
-
+        self.connector.exchange_symbol_associated_to_pair.return_value = self.ex_trading_pair
+        self.connector.trading_pair_associated_to_exchange_symbol.return_value = self.trading_pair
         self.data_source = HuobiAPIOrderBookDataSource(trading_pairs=[self.trading_pair],
                                                        connector=self.connector,
                                                        api_factory=build_api_factory())
