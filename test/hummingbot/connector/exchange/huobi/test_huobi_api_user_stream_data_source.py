@@ -2,14 +2,14 @@ import asyncio
 import json
 import unittest
 from typing import Awaitable, List
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
 from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source import HuobiAPIUserStreamDataSource
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
-from hummingbot.connector.exchange.huobi.huobi_utils import build_api_factory
+from hummingbot.connector.exchange.huobi.huobi_web_utils import build_api_factory
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 
@@ -21,8 +21,11 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        cls.auth = HuobiAuth("somKey", "someSecretKey")
         cls.ev_loop = asyncio.get_event_loop()
+        cls.base_asset = "COINALPHA"
+        cls.quote_asset = "HBOT"
+        cls.trading_pair = f"{cls.base_asset}-{cls.quote_asset}"
+        cls.ex_trading_pair = f"{cls.base_asset}{cls.quote_asset}".lower()
         for task in asyncio.all_tasks(loop=cls.ev_loop):
             task.cancel()
 
@@ -36,9 +39,21 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
 
         self.log_records = []
         self.async_tasks: List[asyncio.Task] = []
-
+        self.mock_time_provider = MagicMock()
+        self.mock_time_provider.time.return_value = 1000
+        self.time_synchronizer = MagicMock()
+        self.time_synchronizer.time.return_value = 1640001112.223
+        self.connector = AsyncMock()
+        self.connector.exchange_symbol_associated_to_pair.return_value = self.ex_trading_pair
+        self.connector.trading_pair_associated_to_exchange_symbol.return_value = self.trading_pair
+        self.auth = HuobiAuth(api_key="somKey",
+                              secret_key="someSecretKey",
+                              time_provider=self.time_synchronizer)
         self.api_factory = build_api_factory()
-        self.data_source = HuobiAPIUserStreamDataSource(huobi_auth=self.auth, api_factory=self.api_factory)
+        self.data_source = HuobiAPIUserStreamDataSource(huobi_auth=self.auth,
+                                                        trading_pairs=[self.trading_pair],
+                                                        connector=self.connector,
+                                                        api_factory=self.api_factory,)
 
         self.data_source.logger().setLevel(1)
         self.data_source.logger().addHandler(self)
@@ -70,14 +85,13 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_assistant = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
         self.assertIsInstance(ws_assistant, WSAssistant)
 
-
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_authenticate_client_raises_cancelled(self, ws_connect_mock):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
         ws_connect_mock.return_value.receive.side_effect = asyncio.CancelledError
 
         # Initialise WSAssistant and assume connected to websocket server
-        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         with self.assertRaises(asyncio.CancelledError):
             self.async_run_with_timeout(self.data_source._authenticate_client(ws))
@@ -87,7 +101,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         ws_connect_mock.return_value.send_json.side_effect = Exception("TEST ERROR")
 
@@ -101,7 +115,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         error_auth_response = {"action": "req", "code": 0, "TEST_ERROR": "ERROR WITH AUTHENTICATION"}
 
@@ -117,7 +131,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         successful_auth_response = {"action": "req", "code": 200, "ch": "auth", "data": {}}
 
@@ -136,9 +150,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value.receive.side_effect = asyncio.CancelledError
 
         # Initialise WSAssistant and assume connected to websocket server
-        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
-
-
+        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
         with self.assertRaises(asyncio.CancelledError):
             self.async_run_with_timeout(
                 self.data_source._subscribe_channels(websocket_assistant=ws))
@@ -148,7 +160,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
 
         successful_auth_response = {"action": "req", "code": 200, "ch": "auth", "data": {}}
 
@@ -174,9 +186,8 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
 
         # Initialise WSAssistant and assume connected to websocket server
-        ws=self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
+        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
         successful_auth_response = {"action": "req", "code": 200, "ch": "auth", "data": {}}
-
         successful_sub_trades_response = {"action": "sub", "code": 200, "ch": "trade.clearing#*", "data": {}}
         successful_sub_order_response = {"action": "sub", "code": 200, "ch": "orders#*", "data": {}}
         successful_sub_account_response = {"action": "sub", "code": 200, "ch": "accounts.update#2", "data": {}}
@@ -201,11 +212,11 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         subscription_requests_sent = self.mocking_assistant.json_messages_sent_through_websocket(
             ws_connect_mock.return_value)
 
-        expected_orders_channel_subscription = {"action": "sub", "ch": "orders#*"}
+        expected_orders_channel_subscription = {"action": "sub", "ch": f"orders#{self.ex_trading_pair}"}
         self.assertIn(expected_orders_channel_subscription, subscription_requests_sent)
         expected_accounts_channel_subscription = {"action": "sub", "ch": "accounts.update#2"}
         self.assertIn(expected_accounts_channel_subscription, subscription_requests_sent)
-        expected_trades_channel_subscription = {"action": "sub", "ch": "trade.clearing#*"}
+        expected_trades_channel_subscription = {"action": "sub", "ch": f"trade.clearing#{self.ex_trading_pair}#1"}
         self.assertIn(expected_trades_channel_subscription, subscription_requests_sent)
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
