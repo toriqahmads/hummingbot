@@ -5,10 +5,12 @@ from typing import Any, AsyncIterable, Dict, List, Optional
 from bidict import bidict
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
-from hummingbot.connector.exchange.huobi import huobi_utils as web_utils
+from hummingbot.connector.constants import s_decimal_0, s_decimal_NaN
+from hummingbot.connector.exchange.huobi import huobi_web_utils as web_utils
 from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source import HuobiAPIUserStreamDataSource
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
 from hummingbot.connector.exchange.huobi.huobi_order_book_tracker import HuobiOrderBookTracker
+from hummingbot.connector.exchange.huobi.huobi_utils import is_exchange_information_valid
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import combine_to_hb_trading_pair
@@ -16,35 +18,14 @@ from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.trade_fee import TokenAmount, TradeFeeBase
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.event.events import MarketEvent
-from hummingbot.core.utils.async_call_scheduler import AsyncCallScheduler
 from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.core.utils.estimate_fee import build_trade_fee
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
-hm_logger = None
-s_decimal_0 = Decimal(0)
-s_decimal_NaN = Decimal("NaN")
-HUOBI_ROOT_API = "https://api.huobi.pro/v1"
-
 
 class HuobiExchange(ExchangePyBase):
 
-    UPDATE_ORDER_STATUS_MIN_INTERVAL = 1.0
     web_utils = web_utils
-
-    MARKET_BUY_ORDER_COMPLETED_EVENT_TAG = MarketEvent.BuyOrderCompleted.value
-    MARKET_SELL_ORDER_COMPLETED_EVENT_TAG = MarketEvent.SellOrderCompleted.value
-    MARKET_ORDER_CANCELED_EVENT_TAG = MarketEvent.OrderCancelled.value
-    MARKET_TRANSACTION_FAILURE_EVENT_TAG = MarketEvent.TransactionFailure.value
-    MARKET_ORDER_FAILURE_EVENT_TAG = MarketEvent.OrderFailure.value
-    MARKET_ORDER_FILLED_EVENT_TAG = MarketEvent.OrderFilled.value
-    MARKET_BUY_ORDER_CREATED_EVENT_TAG = MarketEvent.BuyOrderCreated.value
-    MARKET_SELL_ORDER_CREATED_EVENT_TAG = MarketEvent.SellOrderCreated.value
-    API_CALL_TIMEOUT = 10.0
-    UPDATE_ORDERS_INTERVAL = 10.0
-    SHORT_POLL_INTERVAL = 5.0
-    LONG_POLL_INTERVAL = 120.0
 
     def __init__(self,
                  huobi_api_key: str,
@@ -56,8 +37,6 @@ class HuobiExchange(ExchangePyBase):
         self._trading_pairs = trading_pairs
         self._trading_required = trading_required
         self._account_id = ""
-        self._async_scheduler = AsyncCallScheduler(call_interval=0.5)
-        self._ev_loop = asyncio.get_event_loop()
         super().__init__()
         self._set_order_book_tracker(HuobiOrderBookTracker(connector=self,
                                                            trading_pairs=trading_pairs,
@@ -70,7 +49,9 @@ class HuobiExchange(ExchangePyBase):
 
     @property
     def authenticator(self):
-        return HuobiAuth(api_key=self.huobi_api_key, secret_key=self.huobi_secret_key)
+        return HuobiAuth(api_key=self.huobi_api_key,
+                         secret_key=self.huobi_secret_key,
+                         time_provider=self._time_synchronizer)
 
     @property
     def rate_limits_rules(self):
@@ -78,11 +59,11 @@ class HuobiExchange(ExchangePyBase):
 
     @property
     def domain(self):
-        return
+        return CONSTANTS.DOMAIN
 
     @property
     def client_order_id_max_length(self):
-        pass
+        return CONSTANTS.MAX_CLIENT_ORDER_ID_LENGTH
 
     @property
     def client_order_id_prefix(self):
@@ -113,13 +94,18 @@ class HuobiExchange(ExchangePyBase):
         return self._trading_required
 
     def _create_web_assistants_factory(self) -> WebAssistantsFactory:
-        return web_utils.build_api_factory(throttler=self._throttler, time_synchronizer=self._time_synchronizer, auth=self._auth)
+        return web_utils.build_api_factory(throttler=self._throttler,
+                                           time_synchronizer=self._time_synchronizer,
+                                           auth=self._auth)
 
     def _create_order_book_data_source(self):
         pass
 
     def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
-        return HuobiAPIUserStreamDataSource(huobi_auth=self._auth, api_factory=self._web_assistants_factory)
+        return HuobiAPIUserStreamDataSource(huobi_auth=self._auth,
+                                            trading_pairs=self._trading_pairs,
+                                            connector=self,
+                                            api_factory=self._web_assistants_factory)
 
     async def _update_account_id(self) -> str:
         accounts = await self._api_get(path_url=CONSTANTS.ACCOUNT_ID_URL, is_auth_required=True)
@@ -153,9 +139,7 @@ class HuobiExchange(ExchangePyBase):
                 if balance_entry["type"] == "trade":
                     new_available_balances[asset_name] = balance
 
-            self._account_available_balances.clear()
             self._account_available_balances = new_available_balances
-            self._account_balances.clear()
             self._account_balances = new_balances
 
     async def _update_trading_rules(self):
@@ -248,16 +232,16 @@ class HuobiExchange(ExchangePyBase):
                 continue
             order_state = order_update["data"]["state"]
             # possible order states are "submitted", "partial-filled", "filled", "canceled"
-            if order_state not in ["submitted", "filled", "canceled", "partial-filled", "created", "partial-canceled", "canceling"]:
+            if order_state not in CONSTANTS.ORDER_STATE:
                 self.logger().debug(f"Unrecognized order update response - {order_update}")
 
             # Calculate the newly executed amount for this update.
             new_state = CONSTANTS.ORDER_STATE[order_state]
             update = OrderUpdate(
                 client_order_id=tracked_order.client_order_id,
-                exchange_order_id=str(tracked_order.exchange_order_id),
+                exchange_order_id=str(order_update["data"]["id"]),
                 trading_pair=tracked_order.trading_pair,
-                update_timestamp=self.current_timestamp * 1e-3,
+                update_timestamp=self.current_timestamp,
                 new_state=new_state,
             )
             self._order_tracker.process_order_update(update)
@@ -287,11 +271,6 @@ class HuobiExchange(ExchangePyBase):
                 if not channel.startswith("accounts") and not channel.startswith("orders") and not channel.startswith("trade.clearing"):
                     continue
                 data = stream_message["data"]
-                if len(data) == 0 and stream_message["code"] == 200:
-                    # This is a subcribtion confirmation.
-                    self.logger().info(f"Successfully subscribed to {channel}")
-                    continue
-
                 if channel.startswith("accounts"):
                     asset_name = data["currency"].upper()
                     balance = data["balance"]
@@ -313,16 +292,12 @@ class HuobiExchange(ExchangePyBase):
     async def _process_order_update(self, msg: Dict[str, Any]):
         client_order_id = msg["clientOrderId"]
         order_status = msg["orderStatus"]
-
-        if order_status not in ["submitted", "partial-filled", "filled", "partially-canceled", "canceled", "canceling"]:
-            self.logger().debug(f"Unrecognized order update response - {msg}")
-
         tracked_order = self.in_flight_orders.get(client_order_id, None)
 
         if tracked_order is not None:
             order_update = OrderUpdate(
                 trading_pair=tracked_order.trading_pair,
-                update_timestamp=self.current_timestamp * 1e-3,
+                update_timestamp=self.current_timestamp,
                 new_state=CONSTANTS.ORDER_STATE[order_status],
                 client_order_id=client_order_id
             )
@@ -330,7 +305,7 @@ class HuobiExchange(ExchangePyBase):
 
     async def _process_trade_event(self, trade_event: Dict[str, Any]):
         client_order_id = trade_event["clientOrderId"]
-        tracked_order = self.in_flight_orders.get(client_order_id, None)
+        tracked_order = self.in_flight_orders.get(client_order_id=client_order_id)
 
         if tracked_order:
             fee = TradeFeeBase.new_spot_fee(
@@ -370,11 +345,12 @@ class HuobiExchange(ExchangePyBase):
         order_type_str = "limit" if order_type is OrderType.LIMIT else "limit-maker"
         if not self._account_id:
             await self._update_account_id()
+        exchange_symbol = await self.exchange_symbol_associated_to_pair(trading_pair)
         params = {
             "account-id": self._account_id,
             "amount": f"{amount}",
             "client-order-id": order_id,
-            "symbol": web_utils.convert_to_exchange_trading_pair(trading_pair),
+            "symbol": exchange_symbol,
             "type": f"{side}-{order_type_str}",
         }
         if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
@@ -399,7 +375,7 @@ class HuobiExchange(ExchangePyBase):
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
         mapping = bidict()
-        for symbol_data in filter(web_utils.is_exchange_information_valid, exchange_info.get("data", [])):
+        for symbol_data in filter(is_exchange_information_valid, exchange_info.get("data", [])):
             mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["bc"].upper(),
                                                                         quote=symbol_data["qc"].upper())
         self._set_trading_pair_symbol_map(mapping)
@@ -409,7 +385,8 @@ class HuobiExchange(ExchangePyBase):
         resp_json = await self._api_get(
             path_url=path_url
         )
-        resp_record = [o for o in resp_json["data"] if o["symbol"] == web_utils.convert_to_exchange_trading_pair(trading_pair)][0]
+        ex_symbol = await self.exchange_symbol_associated_to_pair(trading_pair)
+        resp_record = [o for o in resp_json["data"] if o["symbol"] == ex_symbol][0]
         return float(resp_record["close"])
 
     def get_fee(self,

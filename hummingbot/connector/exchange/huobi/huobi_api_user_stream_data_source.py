@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
@@ -9,14 +9,22 @@ from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFa
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
 
+if TYPE_CHECKING:
+    from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
+
 
 class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
     _hausds_logger: Optional[HummingbotLogger] = None
 
-    def __init__(self, huobi_auth: HuobiAuth, api_factory: Optional[WebAssistantsFactory]):
+    def __init__(self, huobi_auth: HuobiAuth,
+                 trading_pairs: List[str],
+                 connector: 'HuobiExchange',
+                 api_factory: Optional[WebAssistantsFactory]):
         self._auth: HuobiAuth = huobi_auth
+        self._connector = connector
         self._api_factory = api_factory
+        self._trading_pairs = trading_pairs
         super().__init__()
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
@@ -36,8 +44,9 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
                     "params": {},
                 }
             )
-            auth_ws_request = await self._auth.ws_authenticate(ws_request)
-            await ws.send(auth_ws_request)
+            auth_params = await self._auth.add_auth_to_params_for_WS(ws_request)
+            ws_request.payload['params'] = auth_params
+            await ws.send(ws_request)
             resp: WSResponse = await ws.receive()
             auth_response = resp.data
             if auth_response.get("code", 0) != 200:
@@ -55,7 +64,7 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
         :param topic: the event type to suscribe to
 
-        :param ws: the websocket assistant used to connect to the exchange
+        :param websocket_assistant: the websocket assistant used to connect to the exchange
         """
         try:
             subscribe_request: WSJSONRequest = WSJSONRequest({"action": "sub", "ch": topic})
@@ -75,13 +84,17 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
         """
         Subscribes to order events, balance events and account events
 
-        :param ws: the websocket assistant used to connect to the exchange
+        :param websocket_assistant: the websocket assistant used to connect to the exchange
         """
         try:
             await self._authenticate_client(websocket_assistant)
-            await self._subscribe_topic(CONSTANTS.HUOBI_TRADE_DETAILS_TOPIC.format("*"), websocket_assistant)
-            await self._subscribe_topic(CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC.format("*"), websocket_assistant)
             await self._subscribe_topic(CONSTANTS.HUOBI_ACCOUNT_UPDATE_TOPIC, websocket_assistant)
+            for trading_pair in self._trading_pairs:
+                exchange_symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+                await self._subscribe_topic(CONSTANTS.HUOBI_TRADE_DETAILS_TOPIC.format(exchange_symbol),
+                                            websocket_assistant)
+                await self._subscribe_topic(CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC.format(exchange_symbol),
+                                            websocket_assistant)
         except asyncio.CancelledError:
             raise
         except Exception:

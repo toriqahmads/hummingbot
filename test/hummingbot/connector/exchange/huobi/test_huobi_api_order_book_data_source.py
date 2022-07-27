@@ -12,7 +12,7 @@ from aioresponses.core import aioresponses
 
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
 from hummingbot.connector.exchange.huobi.huobi_api_order_book_data_source import HuobiAPIOrderBookDataSource
-from hummingbot.connector.exchange.huobi.huobi_utils import build_api_factory
+from hummingbot.connector.exchange.huobi.huobi_web_utils import build_api_factory
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.core.data_type.order_book import OrderBook
 

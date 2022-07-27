@@ -2,10 +2,10 @@ import base64
 import hashlib
 import hmac
 from collections import OrderedDict
-from datetime import datetime
 from typing import Any, Dict
 from urllib.parse import urlencode
 
+from hummingbot.connector.time_synchronizer import TimeSynchronizer
 from hummingbot.core.web_assistant.auth import AuthBase
 from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSJSONRequest
 
@@ -13,10 +13,11 @@ HUOBI_HOST_NAME = "api.huobi.pro"
 
 
 class HuobiAuth(AuthBase):
-    def __init__(self, api_key: str, secret_key: str):
+    def __init__(self, api_key: str, secret_key: str, time_provider: TimeSynchronizer):
         self.api_key: str = api_key
         self.hostname: str = HUOBI_HOST_NAME
         self.secret_key: str = secret_key
+        self.time_provider = time_provider
 
     @staticmethod
     def keysort(dictionary: Dict[str, str]) -> Dict[str, str]:
@@ -24,19 +25,16 @@ class HuobiAuth(AuthBase):
 
     async def rest_authenticate(self, request: RESTRequest) -> RESTRequest:
 
-        auth_params = self.add_auth_to_params_for_REST(request=request)
+        auth_params = self.generate_auth_params_for_REST(request=request)
         request.params = auth_params
 
         return request
 
     async def ws_authenticate(self, request: WSJSONRequest) -> WSJSONRequest:
-        auth_params = self.add_auth_to_params_for_WS(request=request)
-        request.payload['params'] = auth_params
+        return request  # pass-through
 
-        return request
-
-    def add_auth_to_params_for_REST(self, request: RESTRequest) -> Dict[str, Any]:
-        timestamp: str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    def generate_auth_params_for_REST(self, request: RESTRequest) -> Dict[str, Any]:
+        timestamp = int(self.time_provider.time() * 1e3)
         path_url = f"/v1{request.url.split('v1')[-1]}"
         params = request.params or {}
         params.update({
@@ -53,8 +51,8 @@ class HuobiAuth(AuthBase):
         sorted_params["Signature"] = signature
         return sorted_params
 
-    def add_auth_to_params_for_WS(self, request: WSJSONRequest) -> Dict[str, Any]:
-        timestamp: str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    def generate_auth_params_for_WS(self, request: WSJSONRequest) -> Dict[str, Any]:
+        timestamp = int(self.time_provider.time() * 1e3)
         path_url = "/ws/v2"
         params = request.payload.get("params") or {}
         params.update({

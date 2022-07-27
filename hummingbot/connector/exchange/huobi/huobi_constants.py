@@ -5,6 +5,8 @@ from hummingbot.core.data_type.in_flight_order import OrderState
 
 EXCHANGE_NAME = "huobi"
 BROKER_ID = "AAc484720a"
+DOMAIN = ""
+MAX_CLIENT_ORDER_ID_LENGTH = 64
 
 
 REST_URL = "https://api.huobi.pro"
@@ -74,5 +76,6 @@ ORDER_STATE = {
     "partial-filled": OrderState.PARTIALLY_FILLED,
     "filled": OrderState.FILLED,
     "partial-canceled": OrderState.CANCELED,
-    "created": OrderState.PENDING_CREATE
+    "created": OrderState.PENDING_CREATE,
+    "canceling": OrderState.PENDING_CANCEL
 }
