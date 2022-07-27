@@ -44,7 +44,7 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
                     "params": {},
                 }
             )
-            auth_params = await self._auth.add_auth_to_params_for_WS(ws_request)
+            auth_params = await self._auth.generate_auth_params_for_WS(ws_request)
             ws_request.payload['params'] = auth_params
             await ws.send(ws_request)
             resp: WSResponse = await ws.receive()
