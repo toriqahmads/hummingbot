@@ -3,7 +3,7 @@ import copy
 import logging
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Any, AsyncIterable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, AsyncIterable, Dict, List, Optional, Tuple
 
 from async_timeout import timeout
 
@@ -31,6 +31,9 @@ from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.logger import HummingbotLogger
 
+if TYPE_CHECKING:
+    from hummingbot.client.config.config_helpers import ClientConfigAdapter
+
 
 class ExchangePyBase(ExchangeBase, ABC):
     _logger = None
@@ -41,8 +44,8 @@ class ExchangePyBase(ExchangeBase, ABC):
     TRADING_FEES_INTERVAL = TWELVE_HOURS
     TICK_INTERVAL_LIMIT = 60.0
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, client_config_map: "ClientConfigAdapter"):
+        super().__init__(client_config_map)
 
         self._last_poll_timestamp = 0
         self._last_timestamp = 0
@@ -751,7 +754,7 @@ class ExchangePyBase(ExchangeBase, ABC):
                                     "Check API key and network connection.")
                 await self._sleep(0.5)
 
-    async def _update_time_synchronizer(self):
+    async def _update_time_synchronizer(self, pass_on_non_cancelled_error: bool = False):
         try:
             await self._time_synchronizer.update_server_time_offset_with_time_provider(
                 time_provider=self.web_utils.get_current_server_time(
@@ -762,8 +765,9 @@ class ExchangePyBase(ExchangeBase, ABC):
         except asyncio.CancelledError:
             raise
         except Exception:
-            self.logger().exception(f"Error requesting time from {self.name_cap} server")
-            raise
+            if not pass_on_non_cancelled_error:
+                self.logger().exception(f"Error requesting time from {self.name_cap} server")
+                raise
 
     async def _iter_user_event_queue(self) -> AsyncIterable[Dict[str, any]]:
         """
@@ -852,19 +856,19 @@ class ExchangePyBase(ExchangeBase, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def _user_stream_event_listener(self):
+    async def _user_stream_event_listener(self):
         raise NotImplementedError
 
     @abstractmethod
-    def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
+    async def _format_trading_rules(self, exchange_info_dict: Dict[str, Any]) -> List[TradingRule]:
         raise NotImplementedError
 
     @abstractmethod
-    def _update_order_status(self):
+    async def _update_order_status(self):
         raise NotImplementedError
 
     @abstractmethod
-    def _update_balances(self):
+    async def _update_balances(self):
         raise NotImplementedError
 
     @abstractmethod
