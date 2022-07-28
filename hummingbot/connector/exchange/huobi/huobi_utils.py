@@ -18,7 +18,9 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     :param exchange_info: the exchange information for a trading pair
     :return: True if the trading pair is enabled, False otherwise
     """
-    return exchange_info.get("te", False)
+    if exchange_info.get("at") == "enabled":
+        return True
+    return False
 
 
 KEYS = {

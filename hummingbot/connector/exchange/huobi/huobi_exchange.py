@@ -7,9 +7,9 @@ from bidict import bidict
 import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
 from hummingbot.connector.constants import s_decimal_0, s_decimal_NaN
 from hummingbot.connector.exchange.huobi import huobi_web_utils as web_utils
+from hummingbot.connector.exchange.huobi.huobi_api_order_book_data_source import HuobiAPIOrderBookDataSource
 from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source import HuobiAPIUserStreamDataSource
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
-from hummingbot.connector.exchange.huobi.huobi_order_book_tracker import HuobiOrderBookTracker
 from hummingbot.connector.exchange.huobi.huobi_utils import is_exchange_information_valid
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
@@ -38,10 +38,6 @@ class HuobiExchange(ExchangePyBase):
         self._trading_required = trading_required
         self._account_id = ""
         super().__init__()
-        self._set_order_book_tracker(HuobiOrderBookTracker(connector=self,
-                                                           trading_pairs=trading_pairs,
-                                                           api_factory=self._web_assistants_factory,
-                                                           ))
 
     @property
     def name(self) -> str:
@@ -71,11 +67,11 @@ class HuobiExchange(ExchangePyBase):
 
     @property
     def trading_rules_request_path(self):
-        return CONSTANTS.TRADE_RULES_URL
+        return CONSTANTS.TRADE_INFO_URL
 
     @property
     def trading_pairs_request_path(self):
-        return CONSTANTS.SYMBOLS_URL
+        return CONSTANTS.TRADE_INFO_URL
 
     @property
     def check_network_request_path(self):
@@ -99,7 +95,9 @@ class HuobiExchange(ExchangePyBase):
                                            auth=self._auth)
 
     def _create_order_book_data_source(self):
-        pass
+        return HuobiAPIOrderBookDataSource(trading_pairs=self.trading_pairs,
+                                           connector=self,
+                                           api_factory=self._web_assistants_factory)
 
     def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
         return HuobiAPIUserStreamDataSource(huobi_auth=self._auth,
@@ -142,16 +140,6 @@ class HuobiExchange(ExchangePyBase):
             self._account_available_balances = new_available_balances
             self._account_balances = new_balances
 
-    async def _update_trading_rules(self):
-        """Overriding the method in child class because Huobi has separate endpoints
-           for symbol data"""
-        await self._initialize_trading_pair_symbol_map()
-        exchange_trade_rules = await self._api_get(path_url=self.trading_rules_request_path)
-        trading_rules_list = await self._format_trading_rules(exchange_trade_rules)
-        self._trading_rules.clear()
-        for trading_rule in trading_rules_list:
-            self._trading_rules[trading_rule.trading_pair] = trading_rule
-
     async def _format_trading_rules(self, raw_trading_pair_info: List[Dict[str, Any]]) -> List[TradingRule]:
         trading_rules = []
         supported_symbols = await self.trading_pair_symbol_map()
@@ -174,74 +162,64 @@ class HuobiExchange(ExchangePyBase):
                 self.logger().error(f"Error parsing the trading pair rule {info}. Skipping.", exc_info=True)
         return trading_rules
 
-    async def get_order_status(self, tracked_order: InFlightOrder) -> Dict[str, Any]:
-        """
-        Example:
-        {
-            "id": 59378,
-            "symbol": "ethusdt",
-            "account-id": 100009,
-            "amount": "10.1000000000",
-            "price": "100.1000000000",
-            "created-at": 1494901162595,
-            "type": "buy-limit",
-            "field-amount": "10.1000000000",
-            "field-cash-amount": "1011.0100000000",
-            "field-fees": "0.0202000000",
-            "finished-at": 1494901400468,
-            "user-id": 1000,
-            "source": "api",
-            "state": "filled",
-            "canceled-at": 0,
-            "exchange": "huobi",
-            "batch": ""
+    async def _get_order_status(self, tracked_order: InFlightOrder) -> Dict[str, Any]:
+        exchange_order_id = await tracked_order.get_exchange_order_id()
+        detail_url = CONSTANTS.ORDER_DETAIL_URL.format(exchange_order_id)
+        trades_url = CONSTANTS.ORDER_MATCHES_URL.format(exchange_order_id)
+        params = {
+            "order-id": exchange_order_id
         }
-        """
-        try:
-            exchange_order_id = await tracked_order.get_exchange_order_id()
-            if not exchange_order_id:
-                return None
-            path_url = CONSTANTS.ORDER_DETAIL_URL.format(exchange_order_id)
-            params = {
-                "order_id": exchange_order_id
-            }
-            update = await self._api_get(path_url=path_url, params=params, is_auth_required=True, limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
-            return update
-        except Exception:
-            raise
+        update = await self._api_get(path_url=detail_url, params=params, is_auth_required=True, limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
+        trades = await self._api_get(path_url=trades_url, params=params, is_auth_required=True, limit_id=CONSTANTS.ORDER_MATCHES_LIMIT_ID)
+        return update, trades
 
     async def _update_order_status(self):
         tracked_orders = list(self.in_flight_orders.values())
         for tracked_order in tracked_orders:
             try:
-                order_update = await self.get_order_status(tracked_order)
+                order_update, order_trades = await self._get_order_status(tracked_order)
             except Exception:
                 self.logger().network(
-                    f"Error fetching status update for the order {tracked_order.client_order_id}: {order_update}.",
+                    f"Error fetching status update for the order {tracked_order.client_order_id}",
                     app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
                 )
                 await self._order_tracker.process_order_not_found(tracked_order.client_order_id)
                 continue
-            if order_update is None:
-                continue
+
             if order_update.get("status") != "ok":
                 self.logger().network(
                     f"Error fetching status update for the order {tracked_order.client_order_id}: {order_update}.",
                     app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
                 )
                 continue
+            for trade in order_trades["data"]:
+                fee = TradeFeeBase.new_spot_fee(
+                    fee_schema=self.trade_fee_schema(),
+                    trade_type=tracked_order.trade_type,
+                    percent_token=trade["fee-currency"].upper(),
+                    flat_fees=[TokenAmount(amount=Decimal(trade["filled-fees"]),
+                                           token=trade["fee-currency"].upper())]
+                )
+                trade_update = TradeUpdate(
+                    trade_id=str(trade["trade-id"]),
+                    client_order_id=tracked_order.client_order_id,
+                    exchange_order_id=str(trade["order-id"]),
+                    trading_pair=tracked_order.trading_pair,
+                    fee=fee,
+                    fill_base_amount=Decimal(trade["filled-amount"]),
+                    fill_quote_amount=Decimal(trade["filled-amount"]) * Decimal(trade["price"]),
+                    fill_price=Decimal(trade["price"]),
+                    fill_timestamp=trade["created-at"] * 1e-3,
+                )
+                self._order_tracker.process_trade_update(trade_update)
             order_state = order_update["data"]["state"]
-            # possible order states are "submitted", "partial-filled", "filled", "canceled"
-            if order_state not in CONSTANTS.ORDER_STATE:
-                self.logger().debug(f"Unrecognized order update response - {order_update}")
-
-            # Calculate the newly executed amount for this update.
             new_state = CONSTANTS.ORDER_STATE[order_state]
+            ts = (order_update["data"]["finished-at"] * 1e-3) if order_state == "filled" else self.current_timestamp
             update = OrderUpdate(
                 client_order_id=tracked_order.client_order_id,
                 exchange_order_id=str(order_update["data"]["id"]),
                 trading_pair=tracked_order.trading_pair,
-                update_timestamp=self.current_timestamp,
+                update_timestamp=ts,
                 new_state=new_state,
             )
             self._order_tracker.process_order_update(update)
@@ -293,13 +271,14 @@ class HuobiExchange(ExchangePyBase):
         client_order_id = msg["clientOrderId"]
         order_status = msg["orderStatus"]
         tracked_order = self.in_flight_orders.get(client_order_id, None)
-
+        ts = msg["orderCreateTime"] or msg["tradeTime"] or msg["lastActTime"]
         if tracked_order is not None:
             order_update = OrderUpdate(
                 trading_pair=tracked_order.trading_pair,
-                update_timestamp=self.current_timestamp,
+                update_timestamp=ts * 1e-3,
                 new_state=CONSTANTS.ORDER_STATE[order_status],
-                client_order_id=client_order_id
+                client_order_id=client_order_id,
+                exchange_order_id=str(msg["orderId"])
             )
             self._order_tracker.process_order_update(order_update=order_update)
 
@@ -378,6 +357,7 @@ class HuobiExchange(ExchangePyBase):
         for symbol_data in filter(is_exchange_information_valid, exchange_info.get("data", [])):
             mapping[symbol_data["symbol"]] = combine_to_hb_trading_pair(base=symbol_data["bc"].upper(),
                                                                         quote=symbol_data["qc"].upper())
+
         self._set_trading_pair_symbol_map(mapping)
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:

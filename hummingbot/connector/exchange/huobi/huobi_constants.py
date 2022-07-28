@@ -19,28 +19,24 @@ WS_HEARTBEAT_TIME_INTERVAL = 5  # seconds
 TRADE_CHANNEL_SUFFIX = "trade.detail"
 ORDERBOOK_CHANNEL_SUFFIX = "depth.step0"
 
-SYMBOLS_URL = "/v1/settings/common/symbols"
-TRADE_RULES_URL = "/v1/settings/common/market-symbols"
+TRADE_INFO_URL = "/v1/settings/common/market-symbols"
 TICKER_URL = "/market/tickers"
 DEPTH_URL = "/market/depth"
 LAST_TRADE_URL = "/market/trade"
-
-API_VERSION_OLD = "/v1"
-API_VERSION_NEW = "/v2"
-
 
 SERVER_TIME_URL = "/v1/common/timestamp"
 ACCOUNT_ID_URL = "/v1/account/accounts"
 ACCOUNT_BALANCE_URL = "/v1/account/accounts/{}/balance"
 OPEN_ORDERS_URL = "/v1/order/openOrders"
 ORDER_DETAIL_URL = "/v1/order/orders/{}"
+ORDER_MATCHES_URL = "/v1/order/orders/{}/matchresults"
 PLACE_ORDER_URL = "/v1/order/orders/place"
 CANCEL_ORDER_URL = "/v1/order/orders/{}/submitcancel"
 BATCH_CANCEL_URL = "/v1/order/orders/batchcancel"
 
 HUOBI_ACCOUNT_UPDATE_TOPIC = "accounts.update#2"
 HUOBI_ORDER_UPDATE_TOPIC = "orders#{}"
-HUOBI_TRADE_DETAILS_TOPIC = "trade.clearing#{}#1"
+HUOBI_TRADE_DETAILS_TOPIC = "trade.clearing#{}#0"
 
 HUOBI_SUBSCRIBE_TOPICS = {HUOBI_ORDER_UPDATE_TOPIC, HUOBI_ACCOUNT_UPDATE_TOPIC, HUOBI_TRADE_DETAILS_TOPIC}
 
@@ -49,12 +45,12 @@ WS_REQUEST_LIMIT_ID = "WSRequest"
 CANCEL_URL_LIMIT_ID = "cancelRequest"
 ACCOUNT_BALANCE_LIMIT_ID = "accountBalance"
 ORDER_DETAIL_LIMIT_ID = "orderDetail"
+ORDER_MATCHES_LIMIT_ID = "orderMatch"
 
 RATE_LIMITS = [
     RateLimit(WS_CONNECTION_LIMIT_ID, limit=50, time_interval=1),
     RateLimit(WS_REQUEST_LIMIT_ID, limit=10, time_interval=1),
-    RateLimit(limit_id=SYMBOLS_URL, limit=10, time_interval=1),
-    RateLimit(limit_id=TRADE_RULES_URL, limit=10, time_interval=1),
+    RateLimit(limit_id=TRADE_INFO_URL, limit=10, time_interval=1),
     RateLimit(limit_id=TICKER_URL, limit=10, time_interval=1),
     RateLimit(limit_id=DEPTH_URL, limit=10, time_interval=1),
     RateLimit(limit_id=LAST_TRADE_URL, limit=10, time_interval=1),
@@ -62,6 +58,7 @@ RATE_LIMITS = [
     RateLimit(limit_id=ACCOUNT_ID_URL, limit=100, time_interval=2),
     RateLimit(limit_id=ACCOUNT_BALANCE_LIMIT_ID, limit=100, time_interval=2),
     RateLimit(limit_id=ORDER_DETAIL_LIMIT_ID, limit=50, time_interval=2),
+    RateLimit(limit_id=ORDER_MATCHES_LIMIT_ID, limit=50, time_interval=2),
     RateLimit(limit_id=PLACE_ORDER_URL, limit=100, time_interval=2),
     RateLimit(limit_id=CANCEL_URL_LIMIT_ID, limit=100, time_interval=2),
     RateLimit(limit_id=BATCH_CANCEL_URL, limit=50, time_interval=2),
