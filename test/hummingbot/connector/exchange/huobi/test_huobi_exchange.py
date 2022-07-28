@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from unittest.mock import patch
 
 from aioresponses import aioresponses
@@ -842,3 +842,16 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertEqual(Decimal("2000"), available_balances[self.quote_asset])
         self.assertEqual(Decimal("10"), total_balances[self.base_asset])
         self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])
+
+    def _all_executed_requests(self, api_mock: aioresponses, url: Union[str, re.Pattern]) -> List[RequestCall]:
+        request_calls = []
+        for key, value in api_mock.requests.items():
+            _repr = key[1].human_repr()
+            flag = False
+            if isinstance(url, str):
+                flag = _repr.startswith(url)
+            else:
+                flag = url.search(_repr)
+            if flag:
+                request_calls.extend(value)
+        return request_calls

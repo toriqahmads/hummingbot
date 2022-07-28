@@ -3,7 +3,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from unittest import TestCase
 from unittest.mock import AsyncMock, patch
 
@@ -1437,7 +1437,7 @@ class AbstractExchangeConnectorTests:
         def test_user_stream_logs_errors(self):
             self.exchange._set_current_timestamp(1640780000)
 
-            incomplete_event = {"msg":"Invalid message"}
+            incomplete_event = "Invalid message"
 
             mock_queue = AsyncMock()
             mock_queue.get.side_effect = [incomplete_event, asyncio.CancelledError]
@@ -1466,13 +1466,9 @@ class AbstractExchangeConnectorTests:
                 )
             }
 
-        def _all_executed_requests(self, api_mock: aioresponses, url: Union[str, re.Pattern]) -> List[RequestCall]:
-            if isinstance(url, str):
-                checker_fn = lambda url_str: url_str.startswith(url)
-            else:
-                checker_fn = lambda url_str: url.search(url_str)
+        def _all_executed_requests(self, api_mock: aioresponses, url: str) -> List[RequestCall]:
             request_calls = []
             for key, value in api_mock.requests.items():
-                if checker_fn(key[1].human_repr()):
+                if key[1].human_repr().startswith(url):
                     request_calls.extend(value)
             return request_calls
