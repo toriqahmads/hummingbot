@@ -2,12 +2,14 @@ import asyncio
 import json
 import re
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import patch
 
 from aioresponses import aioresponses
 from aioresponses.core import RequestCall
 
+from hummingbot.client.config.client_config_map import ClientConfigMap
+from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.huobi import huobi_constants as CONSTANTS, huobi_web_utils as web_utils
 from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
@@ -420,7 +422,9 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         return "100001"
 
     def create_exchange_instance(self):
+        client_config_map = ClientConfigAdapter(ClientConfigMap())
         instance = HuobiExchange(
+            client_config_map=client_config_map,
             huobi_api_key="testAPIKey",
             huobi_secret_key="testSecret",
             trading_pairs=[self.trading_pair],
@@ -842,16 +846,3 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertEqual(Decimal("2000"), available_balances[self.quote_asset])
         self.assertEqual(Decimal("10"), total_balances[self.base_asset])
         self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])
-
-    def _all_executed_requests(self, api_mock: aioresponses, url: Union[str, re.Pattern]) -> List[RequestCall]:
-        request_calls = []
-        for key, value in api_mock.requests.items():
-            _repr = key[1].human_repr()
-            flag = False
-            if isinstance(url, str):
-                flag = _repr.startswith(url)
-            else:
-                flag = url.search(_repr)
-            if flag:
-                request_calls.extend(value)
-        return request_calls

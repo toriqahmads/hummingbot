@@ -3,7 +3,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
 from unittest import TestCase
 from unittest.mock import AsyncMock, patch
 
@@ -1466,9 +1466,11 @@ class AbstractExchangeConnectorTests:
                 )
             }
 
-        def _all_executed_requests(self, api_mock: aioresponses, url: str) -> List[RequestCall]:
+        def _all_executed_requests(self, api_mock: aioresponses, url: Union[str, re.Pattern]) -> List[RequestCall]:
             request_calls = []
+            if isinstance(url, str):
+                url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
             for key, value in api_mock.requests.items():
-                if key[1].human_repr().startswith(url):
+                if url.search(key[1].human_repr()):
                     request_calls.extend(value)
             return request_calls

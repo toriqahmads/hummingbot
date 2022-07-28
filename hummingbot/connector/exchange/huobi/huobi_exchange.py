@@ -1,6 +1,6 @@
 import asyncio
 from decimal import Decimal
-from typing import Any, AsyncIterable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterable, Dict, List, Optional
 
 from bidict import bidict
 
@@ -22,12 +22,16 @@ from hummingbot.core.utils.async_utils import safe_ensure_future
 from hummingbot.core.utils.estimate_fee import build_trade_fee
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 
+if TYPE_CHECKING:
+    from hummingbot.client.config.config_helpers import ClientConfigAdapter
+
 
 class HuobiExchange(ExchangePyBase):
 
     web_utils = web_utils
 
     def __init__(self,
+                 client_config_map: "ClientConfigAdapter",
                  huobi_api_key: str,
                  huobi_secret_key: str,
                  trading_pairs: Optional[List[str]] = None,
@@ -37,7 +41,7 @@ class HuobiExchange(ExchangePyBase):
         self._trading_pairs = trading_pairs
         self._trading_required = trading_required
         self._account_id = ""
-        super().__init__()
+        super().__init__(client_config_map)
 
     @property
     def name(self) -> str:
