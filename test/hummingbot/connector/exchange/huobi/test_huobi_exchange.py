@@ -8,7 +8,7 @@ from unittest.mock import patch
 from aioresponses import aioresponses
 from aioresponses.core import RequestCall
 
-from hummingbot.connector.exchange.huobi import huobi_constants as CONSTANTS, huobi_utils as web_utils
+from hummingbot.connector.exchange.huobi import huobi_constants as CONSTANTS, huobi_web_utils as web_utils
 from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
 from hummingbot.connector.trading_rule import TradingRule
@@ -22,7 +22,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def all_symbols_url(self):
-        return web_utils.public_rest_url(path_url= CONSTANTS.SYMBOLS_URL)
+        return web_utils.public_rest_url(path_url= CONSTANTS.TRADE_INFO_URL)
 
     @property
     def latest_prices_url(self):
@@ -36,7 +36,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def trading_rules_url(self):
-        url = web_utils.private_rest_url(CONSTANTS.TRADE_RULES_URL)
+        url = web_utils.private_rest_url(CONSTANTS.TRADE_INFO_URL)
         return url
 
     @property
@@ -58,40 +58,40 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "status": "ok",
             "data": [
                 {
-                    "tags": "",
+                    "symbol": self.exchange_symbol_for_tokens(self.base_asset, self. quote_asset),
                     "state": "online",
-                    "wr": "1.5",
-                    "sc": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
-                    "p": [
-                        {
-                            "id": 9,
-                            "name": "Grayscale",
-                            "weight": 91
-                        }
-                    ],
-                    "bcdn": "COINALPHA",
-                    "qcdn": "HBOT",
-                    "elr": None,
-                    "tpp": 2,
-                    "tap": 4,
-                    "fp": 8,
-                    "smlr": None,
-                    "flr": None,
-                    "whe": None,
-                    "cd": None,
-                    "te": True,
+                    "bc": "coinalpha",
+                    "qc": "hbot",
+                    "pp": 4,
+                    "ap": 4,
                     "sp": "main",
-                    "d": None,
-                    "bc": self.base_asset,
-                    "qc": self.quote_asset,
-                    "toa": 1514779200000,
-                    "ttp": 8,
-                    "w": 999400000,
-                    "lr": 5,
-                    "dn": "ETH/USDT"
+                    "vp": 8,
+                    "minoa": 0.01,
+                    "maxoa": 199.0515,
+                    "minov": 5,
+                    "lominoa": 0.01,
+                    "lomaxoa": 199.0515,
+                    "lomaxba": 199.0515,
+                    "lomaxsa": 199.0515,
+                    "smminoa": 0.01,
+                    "blmlt": 1.1,
+                    "slmgt": 0.9,
+                    "smmaxoa": 199.0515,
+                    "bmmaxov": 2500,
+                    "msormlt": 0.1,
+                    "mbormlt": 0.1,
+                    "maxov": 2500,
+                    "u": "btcusdt",
+                    "mfr": 0.035,
+                    "ct": "23:55:00",
+                    "rt": "00:00:00",
+                    "rthr": 4,
+                    "in": 16.3568,
+                    "at": "enabled",
+                    "tags": "etp,nav,holdinglimit,activities"
                 }
             ],
-            "ts": "1639598493658",
+            "ts": "1641880897191",
             "full": 1
         }
 
@@ -178,7 +178,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                     "flr": None,
                     "whe": None,
                     "cd": None,
-                    "te": True,
+                    "te": False,
                     "sp": "main",
                     "d": None,
                     "bc": "invalid",
@@ -248,6 +248,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "status": "ok",
             "data": [
                 {
+                    "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
                     "state": "online",
                     "bc": self.base_asset,
                     "qc": self.quote_asset,
@@ -362,10 +363,13 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         return TradingRule(
             trading_pair=self.trading_pair,
             min_order_size=Decimal(self.trading_rules_request_mock_response["data"][0]["minoa"]),
+            max_order_size=Decimal(self.trading_rules_request_mock_response["data"][0]["maxoa"]),
             min_price_increment=Decimal(
                 self.trading_rules_request_mock_response["data"][0]["pp"]),
             min_base_amount_increment=Decimal(
                 self.trading_rules_request_mock_response["data"][0]["ap"]),
+            min_quote_amount_increment=Decimal(
+                self.trading_rules_request_mock_response["data"][0]['vp']),
             min_notional_size=Decimal(
                 self.trading_rules_request_mock_response["data"][0]["minov"]),
         )
@@ -446,7 +450,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     def validate_order_status_request(self, order: InFlightOrder, request_call: RequestCall):
         request_params = request_call.kwargs["params"]
-        self.assertEqual(order.exchange_order_id, request_params["order_id"])
+        self.assertEqual(order.exchange_order_id, request_params["order-id"])
 
     def validate_trades_request(self, order: InFlightOrder, request_call: RequestCall):
         self.fail()
@@ -510,7 +514,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._order_status_request_canceled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
-        return url
+        return regex_url
 
     def configure_erroneous_http_fill_trade_response(
             self,
@@ -620,19 +624,19 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "ch": f"orders#{self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset)}",
             "data":
                 {
-                    "tradePrice": "76.000000000000000000",
-                    "tradeVolume": "1.013157894736842100",
+                    "tradePrice": "10000.0",
+                    "tradeVolume": "1.0",
                     "tradeId": 301,
                     "tradeTime": 1583854188883,
                     "aggressor": True,
                     "remainAmt": "0.0",
-                    "execAmt": "2",
-                    "orderId": 27163536,
+                    "execAmt": "1.0",
+                    "orderId": order.exchange_order_id,
                     "type": test_type,
                     "clientOrderId": order.client_order_id,
                     "orderSource": "spot-api",
-                    "orderPrice": str(order.price),
-                    "orderSize": "0.01",
+                    "orderPrice": "10000.0",
+                    "orderSize": "1.0",
                     "orderStatus": "filled",
                     "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
                     "eventType": "trade"
@@ -647,7 +651,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
                 "orderId": order.exchange_order_id,
                 "tradePrice": "10000",
-                "tradeVolume": "1",
+                "tradeVolume": "1.0",
                 "orderSide": "buy",
                 "aggressor": True,
                 "tradeId": 919219323232,
@@ -659,7 +663,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "accountId": 9912791,
                 "source": "spot-api",
                 "orderPrice": "10000",
-                "orderSize": "1",
+                "orderSize": "1.0",
                 "clientOrderId": order.client_order_id,
                 "orderCreateTime": 998787897878,
                 "orderStatus": "filled"
@@ -763,9 +767,9 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     def _validate_auth_credentials_taking_parameters_from_argument(self,
                                                                    request_call_tuple: RequestCall,
                                                                    params: Dict[str, Any]):
-        self.assertIn("timestamp", params)
-        self.assertIn("signature", params)
-        self.assertEqual("testAPIKey", params["accessKey"])
+        self.assertIn("Timestamp", params)
+        self.assertIn("Signature", params)
+        self.assertEqual("testAPIKey", params["AccessKeyId"])
 
     @patch("hummingbot.connector.utils.get_tracking_nonce_low_res")
     def test_client_order_id_on_order(self, mocked_nonce):
@@ -838,30 +842,3 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertEqual(Decimal("2000"), available_balances[self.quote_asset])
         self.assertEqual(Decimal("10"), total_balances[self.base_asset])
         self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])
-
-    @aioresponses()
-    def test_update_trading_rules(self, mock_api):
-        self.exchange._set_current_timestamp(1000)
-        mock_pairs_url = self.all_symbols_url
-        mock_pairs_response = self.all_symbols_request_mock_response
-        mock_api.get(mock_pairs_url, body=json.dumps(mock_pairs_response))
-        url = self.trading_rules_url
-        response = self.trading_rules_request_mock_response
-        mock_api.get(url, body=json.dumps(response))
-        self.async_run_with_timeout(coroutine=self.exchange._update_trading_rules())
-        self.assertTrue(self.trading_pair in self.exchange.trading_rules)
-
-    @aioresponses()
-    def test_update_trading_rules_ignores_rule_with_error(self, mock_api):
-        self.exchange._set_current_timestamp(1000)
-        mock_pairs_url = self.all_symbols_url
-        mock_pairs_response = self.all_symbols_request_mock_response
-        mock_api.get(mock_pairs_url, body=json.dumps(mock_pairs_response))
-        url = self.trading_rules_url
-        response = self.trading_rules_request_erroneous_mock_response
-        mock_api.get(url, body=json.dumps(response))
-        self.async_run_with_timeout(coroutine=self.exchange._update_trading_rules())
-        self.assertEqual(0, len(self.exchange._trading_rules))
-        self.assertTrue(
-            self.is_logged("ERROR", self.expected_logged_error_for_erroneous_trading_rule)
-        )

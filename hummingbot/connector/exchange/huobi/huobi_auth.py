@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 from collections import OrderedDict
+from datetime import datetime
 from typing import Any, Dict
 from urllib.parse import urlencode
 
@@ -34,7 +35,7 @@ class HuobiAuth(AuthBase):
         return request  # pass-through
 
     def generate_auth_params_for_REST(self, request: RESTRequest) -> Dict[str, Any]:
-        timestamp = int(self.time_provider.time() * 1e3)
+        timestamp = datetime.utcfromtimestamp(self.time_provider.time()).strftime("%Y-%m-%dT%H:%M:%S")
         path_url = f"/v1{request.url.split('v1')[-1]}"
         params = request.params or {}
         params.update({
@@ -52,7 +53,7 @@ class HuobiAuth(AuthBase):
         return sorted_params
 
     def generate_auth_params_for_WS(self, request: WSJSONRequest) -> Dict[str, Any]:
-        timestamp = int(self.time_provider.time() * 1e3)
+        timestamp = datetime.utcfromtimestamp(self.time_provider.time()).strftime("%Y-%m-%dT%H:%M:%S")
         path_url = "/ws/v2"
         params = request.payload.get("params") or {}
         params.update({

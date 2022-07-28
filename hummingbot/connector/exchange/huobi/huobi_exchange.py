@@ -153,9 +153,9 @@ class HuobiExchange(ExchangePyBase):
                     TradingRule(trading_pair=f"{base_asset}-{quote_asset}".upper(),
                                 min_order_size=Decimal(info["minoa"]),
                                 max_order_size=Decimal(info["maxoa"]),
-                                min_price_increment=Decimal(f"1e-{info['pp']}"),
-                                min_base_amount_increment=Decimal(f"1e-{info['ap']}"),
-                                min_quote_amount_increment=Decimal(f"1e-{info['vp']}"),
+                                min_price_increment=Decimal(info['pp']),
+                                min_base_amount_increment=Decimal(info['ap']),
+                                min_quote_amount_increment=Decimal(info['vp']),
                                 min_notional_size=Decimal(info["minov"]))
                 )
             except Exception:
@@ -169,8 +169,14 @@ class HuobiExchange(ExchangePyBase):
         params = {
             "order-id": exchange_order_id
         }
-        update = await self._api_get(path_url=detail_url, params=params, is_auth_required=True, limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
-        trades = await self._api_get(path_url=trades_url, params=params, is_auth_required=True, limit_id=CONSTANTS.ORDER_MATCHES_LIMIT_ID)
+        update = await self._api_get(path_url=detail_url, params=params, is_auth_required=True,
+                                     limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
+        trades = None
+        try:
+            trades = await self._api_get(path_url=trades_url, params=params, is_auth_required=True,
+                                         limit_id=CONSTANTS.ORDER_MATCHES_LIMIT_ID)
+        except Exception:
+            pass
         return update, trades
 
     async def _update_order_status(self):
@@ -192,26 +198,27 @@ class HuobiExchange(ExchangePyBase):
                     app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
                 )
                 continue
-            for trade in order_trades["data"]:
-                fee = TradeFeeBase.new_spot_fee(
-                    fee_schema=self.trade_fee_schema(),
-                    trade_type=tracked_order.trade_type,
-                    percent_token=trade["fee-currency"].upper(),
-                    flat_fees=[TokenAmount(amount=Decimal(trade["filled-fees"]),
-                                           token=trade["fee-currency"].upper())]
-                )
-                trade_update = TradeUpdate(
-                    trade_id=str(trade["trade-id"]),
-                    client_order_id=tracked_order.client_order_id,
-                    exchange_order_id=str(trade["order-id"]),
-                    trading_pair=tracked_order.trading_pair,
-                    fee=fee,
-                    fill_base_amount=Decimal(trade["filled-amount"]),
-                    fill_quote_amount=Decimal(trade["filled-amount"]) * Decimal(trade["price"]),
-                    fill_price=Decimal(trade["price"]),
-                    fill_timestamp=trade["created-at"] * 1e-3,
-                )
-                self._order_tracker.process_trade_update(trade_update)
+            if order_trades and order_trades.get("status") == "ok":
+                for trade in order_trades["data"]:
+                    fee = TradeFeeBase.new_spot_fee(
+                        fee_schema=self.trade_fee_schema(),
+                        trade_type=tracked_order.trade_type,
+                        percent_token=trade["fee-currency"].upper(),
+                        flat_fees=[TokenAmount(amount=Decimal(trade["filled-fees"]),
+                                               token=trade["fee-currency"].upper())]
+                    )
+                    trade_update = TradeUpdate(
+                        trade_id=str(trade["trade-id"]),
+                        client_order_id=tracked_order.client_order_id,
+                        exchange_order_id=str(trade["order-id"]),
+                        trading_pair=tracked_order.trading_pair,
+                        fee=fee,
+                        fill_base_amount=Decimal(trade["filled-amount"]),
+                        fill_quote_amount=Decimal(trade["filled-amount"]) * Decimal(trade["price"]),
+                        fill_price=Decimal(trade["price"]),
+                        fill_timestamp=trade["created-at"] * 1e-3,
+                    )
+                    self._order_tracker.process_trade_update(trade_update)
             order_state = order_update["data"]["state"]
             new_state = CONSTANTS.ORDER_STATE[order_state]
             ts = (order_update["data"]["finished-at"] * 1e-3) if order_state == "filled" else self.current_timestamp
@@ -259,8 +266,8 @@ class HuobiExchange(ExchangePyBase):
                 elif channel.startswith("orders"):
                     safe_ensure_future(self._process_order_update(data))
                 elif channel.startswith("trade.clearing"):
-                    if data["eventType"] == "trade":
-                        safe_ensure_future(self._process_trade_event(data))
+                    safe_ensure_future(self._process_trade_event(data))
+
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -271,7 +278,7 @@ class HuobiExchange(ExchangePyBase):
         client_order_id = msg["clientOrderId"]
         order_status = msg["orderStatus"]
         tracked_order = self.in_flight_orders.get(client_order_id, None)
-        ts = msg["orderCreateTime"] or msg["tradeTime"] or msg["lastActTime"]
+        ts = msg.get("orderCreateTime") or msg.get("tradeTime") or msg.get("lastActTime")
         if tracked_order is not None:
             order_update = OrderUpdate(
                 trading_pair=tracked_order.trading_pair,
@@ -284,7 +291,7 @@ class HuobiExchange(ExchangePyBase):
 
     async def _process_trade_event(self, trade_event: Dict[str, Any]):
         client_order_id = trade_event["clientOrderId"]
-        tracked_order = self.in_flight_orders.get(client_order_id=client_order_id)
+        tracked_order = self.in_flight_orders.get(client_order_id, None)
 
         if tracked_order:
             fee = TradeFeeBase.new_spot_fee(

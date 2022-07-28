@@ -216,7 +216,7 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         self.assertIn(expected_orders_channel_subscription, subscription_requests_sent)
         expected_accounts_channel_subscription = {"action": "sub", "ch": "accounts.update#2"}
         self.assertIn(expected_accounts_channel_subscription, subscription_requests_sent)
-        expected_trades_channel_subscription = {"action": "sub", "ch": f"trade.clearing#{self.ex_trading_pair}#1"}
+        expected_trades_channel_subscription = {"action": "sub", "ch": f"trade.clearing#{self.ex_trading_pair}#0"}
         self.assertIn(expected_trades_channel_subscription, subscription_requests_sent)
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
