@@ -24,12 +24,13 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def all_symbols_url(self):
-        return web_utils.public_rest_url(path_url= CONSTANTS.TRADE_INFO_URL)
+        return web_utils.public_rest_url(path_url=CONSTANTS.TRADE_INFO_URL)
 
     @property
     def latest_prices_url(self):
-        url = web_utils.public_rest_url(path_url=CONSTANTS.TICKER_URL)
-        return url
+        url = web_utils.public_rest_url(path_url=CONSTANTS.MOST_RECENT_TRADE_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        return regex_url
 
     @property
     def network_status_url(self):
@@ -60,7 +61,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "status": "ok",
             "data": [
                 {
-                    "symbol": self.exchange_symbol_for_tokens(self.base_asset, self. quote_asset),
+                    "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
                     "state": "online",
                     "bc": "coinalpha",
                     "qc": "hbot",
@@ -100,24 +101,31 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
     @property
     def latest_prices_request_mock_response(self):
         return {
+            "ch": f"market.{self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset)}.trade.detail",
             "status": "ok",
-            "ts": 1629789355531,
-            "data": [
-                {
-                    "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
-                    "open": 0.004659,
-                    "high": 0.004696,
-                    "low": 0.0046,
-                    "close": 0.00468,
-                    "amount": 36551302.17544405,
-                    "vol": 170526.0643855023,
-                    "count": 1709,
-                    "bid": 0.004651,
-                    "bidSize": 54300.341,
-                    "ask": 0.004679,
-                    "askSize": 1923.4879
-                },
-            ]
+            "ts": 1629792192037,
+            "tick": {
+                "id": 136107843051,
+                "ts": 1629792191928,
+                "data": [
+                    {
+                        "id": 136107843051348400221001656,
+                        "ts": 1629792191928,
+                        "trade-id": 102517374388,
+                        "amount": 0.028416,
+                        "price": self.expected_latest_price,
+                        "direction": "buy"
+                    },
+                    {
+                        "id": 136107843051348400229813302,
+                        "ts": 1629792191928,
+                        "trade-id": 102517374387,
+                        "amount": 0.025794,
+                        "price": 49806.0,
+                        "direction": "buy"
+                    }
+                ]
+            }
         }
 
     @property
@@ -126,75 +134,76 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             "status": "ok",
             "data": [
                 {
-                    "tags": "",
+                    "symbol": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
                     "state": "online",
-                    "wr": "1.5",
-                    "sc": self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
-                    "p": [
-                        {
-                            "id": 9,
-                            "name": "Grayscale",
-                            "weight": 91
-                        }
-                    ],
-                    "bcdn": "COINALPHA",
-                    "qcdn": "HBOT",
-                    "elr": None,
-                    "tpp": 2,
-                    "tap": 4,
-                    "fp": 8,
-                    "smlr": None,
-                    "flr": None,
-                    "whe": None,
-                    "cd": None,
-                    "te": True,
-                    "sp": "main",
-                    "d": None,
                     "bc": self.base_asset.lower(),
                     "qc": self.quote_asset.lower(),
-                    "toa": 1514779200000,
-                    "ttp": 8,
-                    "w": 999400000,
-                    "lr": 5,
-                    "dn": "ETH/USDT"
+                    "pp": 4,
+                    "ap": 4,
+                    "sp": "main",
+                    "vp": 8,
+                    "minoa": 0.01,
+                    "maxoa": 199.0515,
+                    "minov": 5,
+                    "lominoa": 0.01,
+                    "lomaxoa": 199.0515,
+                    "lomaxba": 199.0515,
+                    "lomaxsa": 199.0515,
+                    "smminoa": 0.01,
+                    "blmlt": 1.1,
+                    "slmgt": 0.9,
+                    "smmaxoa": 199.0515,
+                    "bmmaxov": 2500,
+                    "msormlt": 0.1,
+                    "mbormlt": 0.1,
+                    "maxov": 2500,
+                    "u": "btcusdt",
+                    "mfr": 0.035,
+                    "ct": "23:55:00",
+                    "rt": "00:00:00",
+                    "rthr": 4,
+                    "in": 16.3568,
+                    "at": "enabled",
+                    "tags": "etp,nav,holdinglimit,activities"
                 },
                 {
-                    "tags": "",
-                    "state": "online",
-                    "wr": "1.5",
-                    "sc": self.exchange_symbol_for_tokens("INVALID", "PAIR"),
-                    "p": [
-                        {
-                            "id": 9,
-                            "name": "Grayscale",
-                            "weight": 91
-                        }
-                    ],
-                    "bcdn": "INVALID",
-                    "qcdn": "PAIR",
-                    "elr": None,
-                    "tpp": 2,
-                    "tap": 4,
-                    "fp": 8,
-                    "smlr": None,
-                    "flr": None,
-                    "whe": None,
-                    "cd": None,
-                    "te": False,
-                    "sp": "main",
-                    "d": None,
+                    "symbol": self.exchange_symbol_for_tokens("invalid", "pair"),
+                    "state": "offline",
                     "bc": "invalid",
                     "qc": "pair",
-                    "toa": 1514779200000,
-                    "ttp": 8,
-                    "w": 999400000,
-                    "lr": 5,
-                    "dn": "ETH/USDT"
+                    "pp": 4,
+                    "ap": 4,
+                    "sp": "main",
+                    "vp": 8,
+                    "minoa": 0.01,
+                    "maxoa": 199.0515,
+                    "minov": 5,
+                    "lominoa": 0.01,
+                    "lomaxoa": 199.0515,
+                    "lomaxba": 199.0515,
+                    "lomaxsa": 199.0515,
+                    "smminoa": 0.01,
+                    "blmlt": 1.1,
+                    "slmgt": 0.9,
+                    "smmaxoa": 199.0515,
+                    "bmmaxov": 2500,
+                    "msormlt": 0.1,
+                    "mbormlt": 0.1,
+                    "maxov": 2500,
+                    "u": "btcusdt",
+                    "mfr": 0.035,
+                    "ct": "23:55:00",
+                    "rt": "00:00:00",
+                    "rthr": 4,
+                    "in": 16.3568,
+                    "at": "enabled",
+                    "tags": "etp,nav,holdinglimit,activities"
                 }
             ],
-            "ts": "1639598493658",
+            "ts": "1641880897191",
             "full": 1
         }
+
         return "INVALID-PAIR", response
 
     @property
@@ -391,7 +400,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def is_order_fill_http_update_included_in_status_update(self) -> bool:
-        return False
+        return True
 
     @property
     def is_order_fill_http_update_executed_during_websocket_order_event_processing(self) -> bool:
@@ -454,10 +463,15 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     def validate_order_status_request(self, order: InFlightOrder, request_call: RequestCall):
         request_params = request_call.kwargs["params"]
-        self.assertEqual(order.exchange_order_id, request_params["order-id"])
+        expected_params_keys = ["AccessKeyId", "SignatureMethod", "SignatureVersion", "Timestamp", "Signature"]
+        self.assertEqual(expected_params_keys, list(request_params.keys()))
 
     def validate_trades_request(self, order: InFlightOrder, request_call: RequestCall):
-        self.fail()
+        request_params = request_call.kwargs["params"]
+        request_data = request_call.kwargs["data"]
+        expected_params_keys = ["AccessKeyId", "SignatureMethod", "SignatureVersion", "Timestamp", "Signature"]
+        self.assertEqual(expected_params_keys, list(request_params.keys()))
+        self.assertIsNone(request_data)
 
     def configure_successful_cancelation_response(
             self,
@@ -502,9 +516,8 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(CONSTANTS.ORDER_DETAIL_URL)
-        url = url.format(order.exchange_order_id)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        url = web_utils.private_rest_url(CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?") + r"\?.*")
         response = self._order_status_request_completely_filled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return url
@@ -515,7 +528,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(CONSTANTS.ORDER_DETAIL_URL).format(order.exchange_order_id)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?") + r"\?.*")
         response = self._order_status_request_canceled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return regex_url
@@ -525,8 +538,10 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        # Trade fills not requested during status update in this connector
-        pass
+        url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
+        regex_url = re.compile(url + r"\?.*")
+        mock_api.get(regex_url, status=400, callback=callback)
+        return url
 
     def configure_open_order_status_response(
             self,
@@ -537,7 +552,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         :return: the URL configured
         """
         url = web_utils.private_rest_url(CONSTANTS.ORDER_DETAIL_URL).format(order.exchange_order_id)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?") + r"\?.*")
         response = self._order_status_request_open_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return url
@@ -548,7 +563,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(CONSTANTS.ORDER_DETAIL_URL).format(order.exchange_order_id)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?") + r"\?.*")
         mock_api.get(regex_url, status=401, callback=callback)
         return url
 
@@ -558,7 +573,7 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(CONSTANTS.ORDER_DETAIL_URL).format(order.exchange_order_id)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?") + r"\?.*")
         response = self._order_status_request_partially_filled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return url
@@ -568,15 +583,22 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        # Trade fills are not requested in Binance as part of the status update
-        pass
+        url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_MATCHES_URL.format(order.exchange_order_id))
+        regex_url = re.compile(url + r"\?.*")
+        response = self._order_fills_request_partial_fill_mock_response(order=order)
+        mock_api.get(regex_url, body=json.dumps(response), callback=callback)
+        return url
 
     def configure_full_fill_trade_response(
             self,
             order: InFlightOrder,
             mock_api: aioresponses,
-            callback: Optional[Callable]) -> str:
-        pass
+            callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
+        url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_MATCHES_URL.format(order.exchange_order_id))
+        regex_url = re.compile(url + r"\?.*")
+        response = self._order_fills_request_full_fill_mock_response(order=order)
+        mock_api.get(regex_url, body=json.dumps(response), callback=callback)
+        return url
 
     def order_event_for_new_order_websocket_update(self, order: InFlightOrder):
         test_type = f"{order.trade_type.name.lower()}-limit"
@@ -673,6 +695,78 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
                 "orderStatus": "filled"
             }
         }
+
+    @patch("hummingbot.connector.utils.get_tracking_nonce_low_res")
+    def test_client_order_id_on_order(self, mocked_nonce):
+        mocked_nonce.return_value = 8
+        result = self.exchange.buy(
+            trading_pair=self.trading_pair,
+            amount=Decimal("1"),
+            order_type=OrderType.LIMIT,
+            price=Decimal("2"),
+        )
+        expected_client_order_id = get_new_client_order_id(
+            is_buy=True, trading_pair=self.trading_pair, hbot_order_id_prefix=CONSTANTS.BROKER_ID
+        )
+        self.assertEqual(result, expected_client_order_id)
+        result = self.exchange.sell(
+            trading_pair=self.trading_pair,
+            amount=Decimal("1"),
+            order_type=OrderType.LIMIT,
+            price=Decimal("2"),
+        )
+        expected_client_order_id = get_new_client_order_id(
+            is_buy=False, trading_pair=self.trading_pair, hbot_order_id_prefix=CONSTANTS.BROKER_ID
+        )
+        self.assertEqual(result, expected_client_order_id)
+
+    @aioresponses()
+    @patch("hummingbot.connector.time_synchronizer.TimeSynchronizer._current_seconds_counter")
+    def test_update_time_synchronizer_successfully(self, mock_api, seconds_counter_mock):
+        seconds_counter_mock.side_effect = [0, 0, 0]
+        self.exchange._time_synchronizer.clear_time_offset_ms_samples()
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        response = {
+            "status": "ok",
+            "data": 1640000003000
+        }
+        mock_api.get(regex_url, body=json.dumps(response))
+        self.async_run_with_timeout(self.exchange._update_time_synchronizer())
+        self.assertEqual(response["data"] * 1e-3, self.exchange._time_synchronizer.time())
+
+    @aioresponses()
+    def test_update_time_synchronizer_failure_is_logged(self, mock_api):
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        response = {
+            "status": "fail"
+        }
+        mock_api.get(regex_url, body=json.dumps(response))
+        self.async_run_with_timeout(self.exchange._update_time_synchronizer())
+        self.assertTrue(self.is_logged("NETWORK", "Error getting server time."))
+
+    @aioresponses()
+    def test_update_time_synchronizer_raises_cancelled_error(self, mock_api):
+        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        mock_api.get(regex_url, exception=asyncio.CancelledError)
+        self.assertRaises(
+            asyncio.CancelledError,
+            self.async_run_with_timeout, self.exchange._update_time_synchronizer())
+
+    @aioresponses()
+    def test_update_balances(self, mock_api):
+        url = self.balance_url
+        response = self.balance_request_mock_response_for_base_and_quote
+        mock_api.get(url, body=json.dumps(response))
+        self.async_run_with_timeout(self.exchange._update_balances())
+        available_balances = self.exchange.available_balances
+        total_balances = self.exchange.get_all_balances()
+        self.assertEqual(Decimal("10"), available_balances[self.base_asset])
+        self.assertEqual(Decimal("2000"), available_balances[self.quote_asset])
+        self.assertEqual(Decimal("10"), total_balances[self.base_asset])
+        self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])
 
     def _order_status_request_partially_filled_mock_response(self, order: InFlightOrder) -> Any:
         return {
@@ -775,74 +869,52 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertIn("Signature", params)
         self.assertEqual("testAPIKey", params["AccessKeyId"])
 
-    @patch("hummingbot.connector.utils.get_tracking_nonce_low_res")
-    def test_client_order_id_on_order(self, mocked_nonce):
-        mocked_nonce.return_value = 8
-        result = self.exchange.buy(
-            trading_pair=self.trading_pair,
-            amount=Decimal("1"),
-            order_type=OrderType.LIMIT,
-            price=Decimal("2"),
-        )
-        expected_client_order_id = get_new_client_order_id(
-            is_buy=True, trading_pair=self.trading_pair, hbot_order_id_prefix=CONSTANTS.BROKER_ID
-        )
-        self.assertEqual(result, expected_client_order_id)
-        result = self.exchange.sell(
-            trading_pair=self.trading_pair,
-            amount=Decimal("1"),
-            order_type=OrderType.LIMIT,
-            price=Decimal("2"),
-        )
-        expected_client_order_id = get_new_client_order_id(
-            is_buy=False, trading_pair=self.trading_pair, hbot_order_id_prefix=CONSTANTS.BROKER_ID
-        )
-        self.assertEqual(result, expected_client_order_id)
-
-    @aioresponses()
-    @patch("hummingbot.connector.time_synchronizer.TimeSynchronizer._current_seconds_counter")
-    def test_update_time_synchronizer_successfully(self, mock_api, seconds_counter_mock):
-        seconds_counter_mock.side_effect = [0, 0, 0]
-        self.exchange._time_synchronizer.clear_time_offset_ms_samples()
-        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-        response = {
+    def _order_fills_request_partial_fill_mock_response(self, order: InFlightOrder):
+        return {
             "status": "ok",
-            "data": 1640000003000
+            "data": [
+                {
+                    "symbol": self.exchange_symbol_for_tokens(base_token=self.base_asset, quote_token=self.quote_asset),
+                    "fee-currency": self.expected_fill_fee.flat_fees[0].token.lower(),
+                    "source": "spot-web",
+                    "order-id": int(order.exchange_order_id),
+                    "price": str(self.expected_partial_fill_price),
+                    "created-at": 1629443051839,
+                    "role": "taker",
+                    "match-id": 5014,
+                    "filled-amount": str(self.expected_partial_fill_amount),
+                    "filled-fees": str(self.expected_fill_fee.flat_fees[0].amount),
+                    "filled-points": "0.1",
+                    "fee-deduct-currency": "hbpoint",
+                    "fee-deduct-state": "done",
+                    "trade-id": int(self.expected_fill_trade_id),
+                    "id": 313288753120940,
+                    "type": "buy-market"
+                }
+            ]
         }
-        mock_api.get(regex_url, body=json.dumps(response))
-        self.async_run_with_timeout(self.exchange._update_time_synchronizer())
-        self.assertEqual(response["data"] * 1e-3, self.exchange._time_synchronizer.time())
 
-    @aioresponses()
-    def test_update_time_synchronizer_failure_is_logged(self, mock_api):
-        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-        response = {
-            "status": "fail"
+    def _order_fills_request_full_fill_mock_response(self, order: InFlightOrder):
+        return {
+            "status": "ok",
+            "data": [
+                {
+                    "symbol": self.exchange_symbol_for_tokens(base_token=self.base_asset, quote_token=self.quote_asset),
+                    "fee-currency": self.expected_fill_fee.flat_fees[0].token.lower(),
+                    "source": "spot-web",
+                    "order-id": int(order.exchange_order_id),
+                    "price": str(order.price),
+                    "created-at": 1629443051839,
+                    "role": "taker",
+                    "match-id": 5014,
+                    "filled-amount": str(order.amount),
+                    "filled-fees": str(self.expected_fill_fee.flat_fees[0].amount),
+                    "filled-points": "0.1",
+                    "fee-deduct-currency": "hbpoint",
+                    "fee-deduct-state": "done",
+                    "trade-id": int(self.expected_fill_trade_id),
+                    "id": 313288753120940,
+                    "type": "buy-market"
+                }
+            ]
         }
-        mock_api.get(regex_url, body=json.dumps(response))
-        self.async_run_with_timeout(self.exchange._update_time_synchronizer())
-        self.assertTrue(self.is_logged("NETWORK", "Error getting server time."))
-
-    @aioresponses()
-    def test_update_time_synchronizer_raises_cancelled_error(self, mock_api):
-        url = web_utils.public_rest_url(CONSTANTS.SERVER_TIME_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-        mock_api.get(regex_url, exception=asyncio.CancelledError)
-        self.assertRaises(
-            asyncio.CancelledError,
-            self.async_run_with_timeout, self.exchange._update_time_synchronizer())
-
-    @aioresponses()
-    def test_update_balances(self, mock_api):
-        url = self.balance_url
-        response = self.balance_request_mock_response_for_base_and_quote
-        mock_api.get(url, body=json.dumps(response))
-        self.async_run_with_timeout(self.exchange._update_balances())
-        available_balances = self.exchange.available_balances
-        total_balances = self.exchange.get_all_balances()
-        self.assertEqual(Decimal("10"), available_balances[self.base_asset])
-        self.assertEqual(Decimal("2000"), available_balances[self.quote_asset])
-        self.assertEqual(Decimal("10"), total_balances[self.base_asset])
-        self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])

@@ -93,6 +93,31 @@ class HuobiExchange(ExchangePyBase):
     def is_trading_required(self) -> bool:
         return self._trading_required
 
+    def supported_order_types(self):
+        return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
+
+    def get_fee(self,
+                base_currency: str,
+                quote_currency: str,
+                order_type: OrderType,
+                order_side: TradeType,
+                amount: Decimal,
+                price: Decimal = s_decimal_NaN,
+                is_maker: Optional[bool] = None):
+        return build_trade_fee(
+            self.name,
+            is_maker,
+            base_currency=base_currency,
+            quote_currency=quote_currency,
+            order_type=order_type,
+            order_side=order_side,
+            amount=amount,
+            price=price)
+
+    def _is_request_exception_related_to_time_synchronizer(self, request_exception: Exception):
+        # API documentation does not clarify the error message for timestamp related problems
+        return False
+
     def _create_web_assistants_factory(self) -> WebAssistantsFactory:
         return web_utils.build_api_factory(throttler=self._throttler,
                                            time_synchronizer=self._time_synchronizer,
@@ -124,8 +149,11 @@ class HuobiExchange(ExchangePyBase):
         new_balances = {}
         if not self._account_id:
             await self._update_account_id()
-        data = await self._api_get(path_url=CONSTANTS.ACCOUNT_BALANCE_URL.format(self._account_id), is_auth_required=True, limit_id=CONSTANTS.ACCOUNT_BALANCE_LIMIT_ID)
-        balances = data.get("data").get("list", [])
+        data = await self._api_get(
+            path_url=CONSTANTS.ACCOUNT_BALANCE_URL.format(self._account_id),
+            is_auth_required=True,
+            limit_id=CONSTANTS.ACCOUNT_BALANCE_LIMIT_ID)
+        balances = data.get("data", {}).get("list", [])
         if len(balances) > 0:
             for balance_entry in balances:
                 asset_name = balance_entry["currency"].upper()
@@ -166,74 +194,57 @@ class HuobiExchange(ExchangePyBase):
                 self.logger().error(f"Error parsing the trading pair rule {info}. Skipping.", exc_info=True)
         return trading_rules
 
-    async def _get_order_status(self, tracked_order: InFlightOrder) -> Dict[str, Any]:
+    async def _all_trade_updates_for_order(self, order: InFlightOrder) -> List[TradeUpdate]:
+        trade_updates = []
+
+        if order.exchange_order_id is not None:
+            exchange_order_id = int(order.exchange_order_id)
+            all_fills_response = await self._api_get(
+                path_url=CONSTANTS.ORDER_MATCHES_URL.format(exchange_order_id),
+                is_auth_required=True,
+                limit_id=CONSTANTS.ORDER_MATCHES_LIMIT_ID)
+
+            for trade in all_fills_response.get("data", []):
+                fee = TradeFeeBase.new_spot_fee(
+                    fee_schema=self.trade_fee_schema(),
+                    trade_type=order.trade_type,
+                    percent_token=trade["fee-currency"].upper(),
+                    flat_fees=[TokenAmount(amount=Decimal(trade["filled-fees"]),
+                                           token=trade["fee-currency"].upper())]
+                )
+                trade_update = TradeUpdate(
+                    trade_id=str(trade["trade-id"]),
+                    client_order_id=order.client_order_id,
+                    exchange_order_id=str(trade["order-id"]),
+                    trading_pair=order.trading_pair,
+                    fee=fee,
+                    fill_base_amount=Decimal(trade["filled-amount"]),
+                    fill_quote_amount=Decimal(trade["filled-amount"]) * Decimal(trade["price"]),
+                    fill_price=Decimal(trade["price"]),
+                    fill_timestamp=trade["created-at"] * 1e-3,
+                )
+                trade_updates.append(trade_update)
+
+        return trade_updates
+
+    async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
         exchange_order_id = await tracked_order.get_exchange_order_id()
-        detail_url = CONSTANTS.ORDER_DETAIL_URL.format(exchange_order_id)
-        trades_url = CONSTANTS.ORDER_MATCHES_URL.format(exchange_order_id)
-        params = {
-            "order-id": exchange_order_id
-        }
-        update = await self._api_get(path_url=detail_url, params=params, is_auth_required=True,
-                                     limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
-        trades = None
-        try:
-            trades = await self._api_get(path_url=trades_url, params=params, is_auth_required=True,
-                                         limit_id=CONSTANTS.ORDER_MATCHES_LIMIT_ID)
-        except Exception:
-            pass
-        return update, trades
+        updated_order_data = await self._api_get(
+            path_url=CONSTANTS.ORDER_DETAIL_URL.format(exchange_order_id),
+            is_auth_required=True,
+            limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
 
-    async def _update_order_status(self):
-        tracked_orders = list(self.in_flight_orders.values())
-        for tracked_order in tracked_orders:
-            try:
-                order_update, order_trades = await self._get_order_status(tracked_order)
-            except Exception:
-                self.logger().network(
-                    f"Error fetching status update for the order {tracked_order.client_order_id}",
-                    app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
-                )
-                await self._order_tracker.process_order_not_found(tracked_order.client_order_id)
-                continue
+        new_state = CONSTANTS.ORDER_STATE[updated_order_data["data"]["state"]]
 
-            if order_update.get("status") != "ok":
-                self.logger().network(
-                    f"Error fetching status update for the order {tracked_order.client_order_id}: {order_update}.",
-                    app_warning_msg=f"Failed to fetch status update for the order {tracked_order.client_order_id}."
-                )
-                continue
-            if order_trades and order_trades.get("status") == "ok":
-                for trade in order_trades["data"]:
-                    fee = TradeFeeBase.new_spot_fee(
-                        fee_schema=self.trade_fee_schema(),
-                        trade_type=tracked_order.trade_type,
-                        percent_token=trade["fee-currency"].upper(),
-                        flat_fees=[TokenAmount(amount=Decimal(trade["filled-fees"]),
-                                               token=trade["fee-currency"].upper())]
-                    )
-                    trade_update = TradeUpdate(
-                        trade_id=str(trade["trade-id"]),
-                        client_order_id=tracked_order.client_order_id,
-                        exchange_order_id=str(trade["order-id"]),
-                        trading_pair=tracked_order.trading_pair,
-                        fee=fee,
-                        fill_base_amount=Decimal(trade["filled-amount"]),
-                        fill_quote_amount=Decimal(trade["filled-amount"]) * Decimal(trade["price"]),
-                        fill_price=Decimal(trade["price"]),
-                        fill_timestamp=trade["created-at"] * 1e-3,
-                    )
-                    self._order_tracker.process_trade_update(trade_update)
-            order_state = order_update["data"]["state"]
-            new_state = CONSTANTS.ORDER_STATE[order_state]
-            ts = (order_update["data"]["finished-at"] * 1e-3) if order_state == "filled" else self.current_timestamp
-            update = OrderUpdate(
-                client_order_id=tracked_order.client_order_id,
-                exchange_order_id=str(order_update["data"]["id"]),
-                trading_pair=tracked_order.trading_pair,
-                update_timestamp=ts,
-                new_state=new_state,
-            )
-            self._order_tracker.process_order_update(update)
+        order_update = OrderUpdate(
+            client_order_id=tracked_order.client_order_id,
+            exchange_order_id=exchange_order_id,
+            trading_pair=tracked_order.trading_pair,
+            update_timestamp=self.current_timestamp,
+            new_state=new_state,
+        )
+
+        return order_update
 
     async def _iter_user_event_queue(self) -> AsyncIterable[Dict[str, Any]]:
         """
@@ -257,8 +268,6 @@ class HuobiExchange(ExchangePyBase):
         async for stream_message in self._iter_user_event_queue():
             try:
                 channel = stream_message["ch"]
-                if not channel.startswith("accounts") and not channel.startswith("orders") and not channel.startswith("trade.clearing"):
-                    continue
                 data = stream_message["data"]
                 if channel.startswith("accounts"):
                     asset_name = data["currency"].upper()
@@ -281,21 +290,19 @@ class HuobiExchange(ExchangePyBase):
     async def _process_order_update(self, msg: Dict[str, Any]):
         client_order_id = msg["clientOrderId"]
         order_status = msg["orderStatus"]
-        tracked_order = self.in_flight_orders.get(client_order_id, None)
-        ts = msg.get("orderCreateTime") or msg.get("tradeTime") or msg.get("lastActTime")
+        tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
         if tracked_order is not None:
             order_update = OrderUpdate(
                 trading_pair=tracked_order.trading_pair,
-                update_timestamp=ts * 1e-3,
+                update_timestamp=self.current_timestamp,
                 new_state=CONSTANTS.ORDER_STATE[order_status],
                 client_order_id=client_order_id,
-                exchange_order_id=str(msg["orderId"])
             )
             self._order_tracker.process_order_update(order_update=order_update)
 
     async def _process_trade_event(self, trade_event: Dict[str, Any]):
         client_order_id = trade_event["clientOrderId"]
-        tracked_order = self.in_flight_orders.get(client_order_id, None)
+        tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
 
         if tracked_order:
             fee = TradeFeeBase.new_spot_fee(
@@ -319,9 +326,6 @@ class HuobiExchange(ExchangePyBase):
 
     async def _update_trading_fees(self):
         pass
-
-    def supported_order_types(self):
-        return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
 
     async def _place_order(self,
                            order_id: str,
@@ -372,20 +376,11 @@ class HuobiExchange(ExchangePyBase):
         self._set_trading_pair_symbol_map(mapping)
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
-        path_url = CONSTANTS.TICKER_URL
+        path_url = CONSTANTS.MOST_RECENT_TRADE_URL
+        params = {"symbol": await self.exchange_symbol_associated_to_pair(trading_pair)}
         resp_json = await self._api_get(
-            path_url=path_url
+            path_url=path_url,
+            params=params,
         )
-        ex_symbol = await self.exchange_symbol_associated_to_pair(trading_pair)
-        resp_record = [o for o in resp_json["data"] if o["symbol"] == ex_symbol][0]
-        return float(resp_record["close"])
-
-    def get_fee(self,
-                base_currency: str,
-                quote_currency: str,
-                order_type: OrderType,
-                order_side: TradeType,
-                amount: Decimal,
-                price: Decimal = s_decimal_NaN,
-                is_maker: Optional[bool] = None):
-        return build_trade_fee(self.name, is_maker, base_currency=base_currency, quote_currency=quote_currency, order_type=order_type, order_side=order_side, amount=amount, price=price)
+        resp_record = resp_json["tick"]["data"][0]
+        return float(resp_record["price"])

@@ -1,8 +1,9 @@
 from decimal import Decimal
 from typing import Any, Dict
 
-from hummingbot.client.config.config_methods import using_exchange
-from hummingbot.client.config.config_var import ConfigVar
+from pydantic import Field, SecretStr
+
+from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
 from hummingbot.core.data_type.trade_fee import TradeFeeSchema
 
 DEFAULT_FEES = TradeFeeSchema(
@@ -18,22 +19,34 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     :param exchange_info: the exchange information for a trading pair
     :return: True if the trading pair is enabled, False otherwise
     """
-    if exchange_info.get("at") == "enabled":
+    if exchange_info.get("state") == "online":
         return True
     return False
 
 
-KEYS = {
-    "huobi_api_key":
-        ConfigVar(key="huobi_api_key",
-                  prompt="Enter your Huobi API key >>> ",
-                  required_if=using_exchange("huobi"),
-                  is_secure=True,
-                  is_connect_key=True),
-    "huobi_secret_key":
-        ConfigVar(key="huobi_secret_key",
-                  prompt="Enter your Huobi secret key >>> ",
-                  required_if=using_exchange("huobi"),
-                  is_secure=True,
-                  is_connect_key=True),
-}
+class HuobiConfigMap(BaseConnectorConfigMap):
+    connector: str = Field(default="huobi", const=True, client_data=None)
+    huobi_api_key: SecretStr = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your Huobi API key",
+            is_secure=True,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
+    huobi_secret_key: SecretStr = Field(
+        default=...,
+        client_data=ClientFieldData(
+            prompt=lambda cm: "Enter your Huobi secret key",
+            is_secure=True,
+            is_connect_key=True,
+            prompt_on_new=True,
+        )
+    )
+
+    class Config:
+        title = "huobi"
+
+
+KEYS = HuobiConfigMap.construct()

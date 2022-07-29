@@ -11,7 +11,6 @@ from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source impor
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
 from hummingbot.connector.exchange.huobi.huobi_web_utils import build_api_factory
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
-from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 
 
 class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
@@ -79,11 +78,6 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
     def _create_exception_and_unlock_test_with_event(self, exception):
         self.resume_test_event.set()
         raise exception
-
-    def test_connected_websocket_assistant(self):
-
-        ws_assistant = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
-        self.assertIsInstance(ws_assistant, WSAssistant)
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_authenticate_client_raises_cancelled(self, ws_connect_mock):

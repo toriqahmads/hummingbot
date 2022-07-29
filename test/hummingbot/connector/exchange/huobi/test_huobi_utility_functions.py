@@ -25,7 +25,7 @@ class HuobiUtilsTestCases(unittest.TestCase):
             "data": [
                 {
                     "symbol": "btc3lusdt",
-                    "state": "online",
+                    "state": "offline",
                     "bc": "btc3l",
                     "qc": "usdt",
                     "pp": 4,
@@ -53,7 +53,7 @@ class HuobiUtilsTestCases(unittest.TestCase):
                     "rt": "00:00:00",
                     "rthr": 4,
                     "in": 16.3568,
-                    "at": "disabled",
+                    "at": "enabled",
                     "tags": "etp,nav,holdinglimit,activities"
                 }
             ],
