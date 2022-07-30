@@ -69,11 +69,7 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
         try:
             subscribe_request: WSJSONRequest = WSJSONRequest({"action": "sub", "ch": topic})
             await websocket_assistant.send(subscribe_request)
-            resp: WSResponse = await websocket_assistant.receive()
-            sub_response = resp.data
-            if sub_response.get("code", 0) != 200:
-                raise ValueError(f"Error subscribing to topic: {topic}")
-            self.logger().info(f"Successfully subscribed to {topic}")
+            self.logger().info(f"Subscribed to {topic}")
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -107,5 +103,8 @@ class HuobiAPIUserStreamDataSource(UserStreamTrackerDataSource):
             if data["action"] == "ping":
                 pong_request = WSJSONRequest(payload={"action": "pong", "data": data["data"]})
                 await websocket_assistant.send(request=pong_request)
-                continue
-            queue.put_nowait(data)
+            elif data["action"] == "sub":
+                if data.get("code") != 200:
+                    raise ValueError(f"Error subscribing to topic: {data.get('ch')} ({data})")
+            else:
+                queue.put_nowait(data)

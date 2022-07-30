@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 
-import hummingbot.connector.exchange.huobi.huobi_constants as CONSTANTS
 from hummingbot.connector.exchange.huobi.huobi_api_user_stream_data_source import HuobiAPIUserStreamDataSource
 from hummingbot.connector.exchange.huobi.huobi_auth import HuobiAuth
 from hummingbot.connector.exchange.huobi.huobi_web_utils import build_api_factory
@@ -148,32 +147,6 @@ class HuobiAPIUserStreamDataSourceTests(unittest.TestCase):
         with self.assertRaises(asyncio.CancelledError):
             self.async_run_with_timeout(
                 self.data_source._subscribe_channels(websocket_assistant=ws))
-
-    @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
-    def test_subscribe_channels_subscribe_topic_fail(self, ws_connect_mock):
-        ws_connect_mock.return_value = self.mocking_assistant.create_websocket_mock()
-
-        # Initialise WSAssistant and assume connected to websocket server
-        ws = self.async_run_with_timeout(self.data_source._connected_websocket_assistant())
-
-        successful_auth_response = {"action": "req", "code": 200, "ch": "auth", "data": {}}
-
-        error_sub_response = {"action": "sub", "code": 0, "TEST_ERROR": "ERROR SUBSCRIBING TO USER STREAM TOPIC"}
-
-        self.mocking_assistant.add_websocket_aiohttp_message(
-            ws_connect_mock.return_value, message=json.dumps(successful_auth_response)
-        )
-        self.mocking_assistant.add_websocket_aiohttp_message(
-            ws_connect_mock.return_value, message=json.dumps(error_sub_response)
-        )
-
-        with self.assertRaisesRegex(ValueError, "Error subscribing to topic: "):
-            self.async_run_with_timeout(
-                self.data_source._subscribe_channels(websocket_assistant=ws))
-
-        self._is_logged("ERROR", f"Cannot subscribe to user stream topic: {CONSTANTS.HUOBI_ORDER_UPDATE_TOPIC}")
-
-        self._is_logged("ERROR", "Unexpected error occurred subscribing to private user streams...")
 
     @patch("aiohttp.ClientSession.ws_connect", new_callable=AsyncMock)
     def test_subscribe_channels_successful(self, ws_connect_mock):
