@@ -181,13 +181,16 @@ class HuobiExchange(ExchangePyBase):
                     continue
                 base_asset = info["bc"]
                 quote_asset = info["qc"]
+                price_precision = info["pp"]
+                amount_precision = info["ap"]
+                value_precision = info["vp"]
                 trading_rules.append(
                     TradingRule(trading_pair=f"{base_asset}-{quote_asset}".upper(),
                                 min_order_size=Decimal(info["minoa"]),
                                 max_order_size=Decimal(info["maxoa"]),
-                                min_price_increment=Decimal(info['pp']),
-                                min_base_amount_increment=Decimal(info['ap']),
-                                min_quote_amount_increment=Decimal(info['vp']),
+                                min_price_increment=Decimal(str(10 ** -price_precision)),
+                                min_base_amount_increment=Decimal(str(10 ** -amount_precision)),
+                                min_quote_amount_increment=Decimal(str(10 ** -value_precision)),
                                 min_notional_size=Decimal(info["minov"]))
                 )
             except Exception:

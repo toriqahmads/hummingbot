@@ -371,18 +371,18 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
 
     @property
     def expected_trading_rule(self):
+        price_precision = self.trading_rules_request_mock_response["data"][0]["pp"]
+        amount_precision = self.trading_rules_request_mock_response["data"][0]["ap"]
+        value_precision = self.trading_rules_request_mock_response["data"][0]["vp"]
+
         return TradingRule(
             trading_pair=self.trading_pair,
             min_order_size=Decimal(self.trading_rules_request_mock_response["data"][0]["minoa"]),
             max_order_size=Decimal(self.trading_rules_request_mock_response["data"][0]["maxoa"]),
-            min_price_increment=Decimal(
-                self.trading_rules_request_mock_response["data"][0]["pp"]),
-            min_base_amount_increment=Decimal(
-                self.trading_rules_request_mock_response["data"][0]["ap"]),
-            min_quote_amount_increment=Decimal(
-                self.trading_rules_request_mock_response["data"][0]['vp']),
-            min_notional_size=Decimal(
-                self.trading_rules_request_mock_response["data"][0]["minov"]),
+            min_price_increment=Decimal(str(10 ** -price_precision)),
+            min_base_amount_increment=Decimal(str(10 ** -amount_precision)),
+            min_quote_amount_increment=Decimal(str(10 ** -value_precision)),
+            min_notional_size=Decimal(self.trading_rules_request_mock_response["data"][0]["minov"]),
         )
 
     @property
