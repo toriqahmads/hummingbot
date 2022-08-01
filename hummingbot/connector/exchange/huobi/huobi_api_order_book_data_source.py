@@ -117,8 +117,13 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
         while True:
             try:
                 msg: Dict[str, Any] = await message_queue.get()
+                msg_channel = msg["ch"]
+                order_book_symbol = msg_channel.split(".")[1]
                 snapshot_msg: OrderBookMessage = self.snapshot_message_from_exchange(
                     msg=msg,
+                    metadata={
+                        "trading_pair": await self._connector.trading_pair_associated_to_exchange_symbol(order_book_symbol)
+                    }
                 )
                 output.put_nowait(snapshot_msg)
             except asyncio.CancelledError:
@@ -146,17 +151,13 @@ class HuobiAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
         if metadata:
             msg.update(metadata)
-        msg_ts = int(round(msg["tick"]["ts"] / 1e3))
-        msg_channel = msg["ch"]
+        msg_ts = msg["tick"]["ts"] * 1e-3
         content = {
+            "trading_pair": msg["trading_pair"],
             "update_id": msg["tick"]["ts"],
             "bids": msg["tick"].get("bids", []),
             "asks": msg["tick"].get("asks", [])
         }
-        if "trading_pair" in msg:
-            content["trading_pair"] = msg["trading_pair"]
-        else:
-            content["trading_pair"] = self._connector.trading_pair_associated_to_exchange_symbol(msg_channel.split(".")[1])
 
         return OrderBookMessage(OrderBookMessageType.SNAPSHOT, content, timestamp=msg_ts)
 
