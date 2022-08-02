@@ -949,7 +949,7 @@ class TestGateIoExchange(unittest.TestCase):
 
         self.assertTrue(
             self._is_logged(
-                "NETWORK",
+                "WARNING",
                 f"Error fetching status update for the order {order.client_order_id}: "
                 f"Error executing request GET "
                 f"{CONSTANTS.REST_URL}/{CONSTANTS.ORDER_STATUS_PATH_URL.format(order_id=order.exchange_order_id)}. "

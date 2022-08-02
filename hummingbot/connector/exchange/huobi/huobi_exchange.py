@@ -237,17 +237,20 @@ class HuobiExchange(ExchangePyBase):
             is_auth_required=True,
             limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
 
-        new_state = CONSTANTS.ORDER_STATE[updated_order_data["data"]["state"]]
+        if updated_order_data["status"] == "ok":
+            new_state = CONSTANTS.ORDER_STATE[updated_order_data["data"]["state"]]
 
-        order_update = OrderUpdate(
-            client_order_id=tracked_order.client_order_id,
-            exchange_order_id=exchange_order_id,
-            trading_pair=tracked_order.trading_pair,
-            update_timestamp=self.current_timestamp,
-            new_state=new_state,
-        )
+            order_update = OrderUpdate(
+                client_order_id=tracked_order.client_order_id,
+                exchange_order_id=exchange_order_id,
+                trading_pair=tracked_order.trading_pair,
+                update_timestamp=self.current_timestamp,
+                new_state=new_state,
+            )
 
-        return order_update
+            return order_update
+        else:
+            raise ValueError(f"Erroneous order status response {updated_order_data}")
 
     async def _iter_user_event_queue(self) -> AsyncIterable[Dict[str, Any]]:
         """

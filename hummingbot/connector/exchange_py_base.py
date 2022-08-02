@@ -927,11 +927,8 @@ class ExchangePyBase(ExchangeBase, ABC):
                 )
                 await self._order_tracker.process_order_not_found(client_order_id)
             except Exception as request_error:
-                self.logger().network(
-                    f"Error fetching status update for the order {order.client_order_id}: {request_error}.",
-                    app_warning_msg=f"Failed to fetch status update for the order {order.client_order_id}.",
-                    exc_info=True
-                )
+                self.logger().warning(
+                    f"Error fetching status update for the order {order.client_order_id}: {request_error}.")
                 await self._order_tracker.process_order_not_found(order.client_order_id)
 
     async def _update_lost_orders(self):
