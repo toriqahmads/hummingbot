@@ -355,13 +355,17 @@ class HuobiExchange(ExchangePyBase):
         }
         if order_type is OrderType.LIMIT or order_type is OrderType.LIMIT_MAKER:
             params["price"] = f"{price}"
-        exchange_order_id = await self._api_post(
+        creation_response = await self._api_post(
             path_url=path_url,
             params=params,
             data=params,
             is_auth_required=True
         )
-        return str(exchange_order_id["data"]), self.current_timestamp
+
+        if creation_response["status"] != "ok" or creation_response["data"] is None:
+            raise ValueError(f"Huobi rejected the order {order_id} ({creation_response})")
+
+        return str(creation_response["data"]), self.current_timestamp
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         if tracked_order is None:

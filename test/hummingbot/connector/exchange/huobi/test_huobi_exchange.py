@@ -15,9 +15,10 @@ from hummingbot.connector.exchange.huobi.huobi_exchange import HuobiExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import get_new_client_order_id
-from hummingbot.core.data_type.common import OrderType
+from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
+from hummingbot.core.event.events import MarketOrderFailureEvent
 
 
 class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
@@ -767,6 +768,47 @@ class HuobiExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
         self.assertEqual(Decimal("2000"), available_balances[self.quote_asset])
         self.assertEqual(Decimal("10"), total_balances[self.base_asset])
         self.assertEqual(Decimal("2000"), total_balances[self.quote_asset])
+
+    @aioresponses()
+    def test_create_order_fails_if_response_does_not_include_exchange_order_id(self, mock_api):
+        self._simulate_trading_rules_initialized()
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
+
+        url = self.order_creation_url
+
+        creation_response = {
+            "status": "ok",
+            "data": None
+        }
+
+        mock_api.post(url,
+                      body=json.dumps(creation_response),
+                      callback=lambda *args, **kwargs: request_sent_event.set())
+
+        order_id = self.exchange.buy(trading_pair=self.trading_pair,
+                                     amount=Decimal("100"),
+                                     order_type=OrderType.LIMIT,
+                                     price=Decimal("10000"))
+        self.async_run_with_timeout(request_sent_event.wait())
+
+        order_request = self._all_executed_requests(mock_api, url)[0]
+        self.validate_auth_credentials_present(order_request)
+        self.assertNotIn(order_id, self.exchange.in_flight_orders)
+
+        self.assertEqual(0, len(self.buy_order_created_logger.event_log))
+        failure_event: MarketOrderFailureEvent = self.order_failure_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, failure_event.timestamp)
+        self.assertEqual(OrderType.LIMIT, failure_event.order_type)
+        self.assertEqual(order_id, failure_event.order_id)
+
+        self.assertTrue(
+            self.is_logged(
+                "NETWORK",
+                f"Error submitting {TradeType.BUY.name.lower()} {OrderType.LIMIT.name} order to "
+                f"{self.exchange.name_cap} for {Decimal('100.000000')} {self.trading_pair} @ {Decimal('10000.0000')}."
+            )
+        )
 
     def _order_status_request_partially_filled_mock_response(self, order: InFlightOrder) -> Any:
         return {
