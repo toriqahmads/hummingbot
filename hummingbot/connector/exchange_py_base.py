@@ -477,7 +477,7 @@ class ExchangePyBase(ExchangeBase, ABC):
 
             order_update: OrderUpdate = OrderUpdate(
                 client_order_id=order_id,
-                exchange_order_id=exchange_order_id,
+                exchange_order_id=str(exchange_order_id),
                 trading_pair=trading_pair,
                 update_timestamp=update_timestamp,
                 new_state=OrderState.OPEN,

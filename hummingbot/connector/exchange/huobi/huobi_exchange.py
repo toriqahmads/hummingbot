@@ -362,10 +362,13 @@ class HuobiExchange(ExchangePyBase):
             is_auth_required=True
         )
 
-        if creation_response["status"] != "ok" or creation_response["data"] is None:
+        if (creation_response["status"] == "ok"
+                and creation_response["data"] is not None
+                and str(creation_response["data"]).isdecimal()):
+            exchange_order_id = str(creation_response["data"])
+            return exchange_order_id, self.current_timestamp
+        else:
             raise ValueError(f"Huobi rejected the order {order_id} ({creation_response})")
-
-        return str(creation_response["data"]), self.current_timestamp
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         if tracked_order is None:
