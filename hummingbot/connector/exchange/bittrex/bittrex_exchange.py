@@ -179,8 +179,8 @@ class BittrexExchange(ExchangePyBase):
         account_balances = await self._api_get(path_url=CONSTANTS.BALANCES_URL, is_auth_required=True)
         for balance_entry in account_balances:
             asset_name = balance_entry["currencySymbol"]
-            available_balance = balance_entry["available"]
-            total_balance = balance_entry["total"]
+            available_balance = Decimal(balance_entry["available"])
+            total_balance = Decimal(balance_entry["total"])
             self._account_available_balances[asset_name] = available_balance
             self._account_balances[asset_name] = total_balance
             remote_asset_names.add(asset_name)
@@ -215,8 +215,11 @@ class BittrexExchange(ExchangePyBase):
             is_auth_required=True,
         )
         for fees in resp:
-            trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=fees["marketSymbol"])
-            self._trading_fees[trading_pair] = fees
+            try:
+                trading_pair = await self.trading_pair_associated_to_exchange_symbol(symbol=fees["marketSymbol"])
+                self._trading_fees[trading_pair] = fees
+            except Exception:
+                continue
 
     async def _all_trade_updates_for_order(self, order: InFlightOrder) -> List[TradeUpdate]:
         exchange_order_id = await order.get_exchange_order_id()

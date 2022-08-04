@@ -1,12 +1,18 @@
 import asyncio
 import time
-from typing import Any, Dict, List, Optional
+from base64 import b64decode
+from typing import Any, AsyncIterable, Dict, List, Optional
+from zlib import MAX_WBITS, decompress
+
+import signalr_aio
+import ujson
+from async_timeout import timeout
 
 from hummingbot.connector.exchange.bittrex import bittrex_constants as CONSTANTS, bittrex_web_utils as web_utils
 from hummingbot.core.data_type.common import TradeType
 from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import RESTMethod, WSJSONRequest
+from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 
@@ -19,12 +25,12 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         self._trade_messages_queue_key = CONSTANTS.TRADE_EVENT_KEY
         self._diff_messages_queue_key = CONSTANTS.DIFF_EVENT_KEY
         self._api_factory = api_factory
+        self.hub = None
 
-    async def _connected_websocket_assistant(self) -> WSAssistant:
-        ws: WSAssistant = await self._api_factory.get_ws_assistant()
-        await ws.connect(ws_url=CONSTANTS.BITTREX_WS_URL,
-                         ping_timeout=CONSTANTS.PING_TIMEOUT)
-        return ws
+    async def _connected_websocket_assistant(self):
+        ws_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
+        self.hub = ws_connection.register_hub("c3")
+        return ws_connection
 
     async def get_last_traded_prices(self,
                                      trading_pairs: List[str],
@@ -55,33 +61,37 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         )
         return snapshot_msg
 
+    # TODO Move utility functions to one single file after verification
+    async def _checked_socket_stream(self, connection: signalr_aio.Connection) -> AsyncIterable[str]:
+        try:
+            while True:
+                async with timeout(CONSTANTS.MESSAGE_TIMEOUT):  # Timeouts if not receiving any messages for 10 seconds(ping)
+                    msg = await connection.msg_queue.get()
+                    yield msg
+        except asyncio.TimeoutError:
+            self.logger().warning("Message queue get() timed out. Going to reconnect...")
+
+    def _decode_message(self, raw_message) -> Dict[str, Any]:
+        try:
+            decoded_msg: bytes = decompress(b64decode(raw_message, validate=True), -MAX_WBITS)
+        except SyntaxError:
+            decoded_msg: bytes = decompress(b64decode(raw_message, validate=True))
+        except Exception:
+            return {}
+
+        return ujson.loads(decoded_msg.decode())
+
     async def _subscribe_channels(self, ws: WSAssistant):
         try:
-            trade_params = []
-            market_params = []
-            for trading_pair in self._trading_pairs:
-                symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-                trade_params.append(f"trade_{symbol}")
-                market_params.append(f"orderbook_{symbol}_25")
-            payload = {
-                "H": "c3",
-                "M": "Subscribe",
-                "A": [trade_params, ],
-                "I": 1
-            }
-            subscribe_trade_request: WSJSONRequest = WSJSONRequest(payload=payload)
-
-            payload = {
-                "H": "c3",
-                "M": "Subscribe",
-                "A": [market_params, ],
-                "I": 1
-            }
-            subscribe_orderbook_request: WSJSONRequest = WSJSONRequest(payload=payload)
-
-            await ws.send(subscribe_trade_request)
-            await ws.send(subscribe_orderbook_request)
+            trading_symbols = [await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
+                               for trading_pair in self._trading_pairs]
+            subscription_names = [f"trade_{symbol}" for symbol in trading_symbols]
+            subscription_names.extend([f"orderbook_{symbol}_25" for symbol in trading_symbols])
+            self.hub.server.invoke("Subscribe", subscription_names)
             self.logger().info("Subscribed to public order book and trade channels...")
+
+            ws.start()
+            self.logger().info("Websocket connection started...")
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -90,6 +100,13 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 exc_info=True
             )
             raise
+
+    async def _process_websocket_messages(self, websocket_assistant):
+        async for raw_message in self._checked_socket_stream(websocket_assistant):
+            decoded_msg: Dict[str, Any] = self._decode_message(raw_message)
+            channel: str = self._channel_originating_message(event_message=decoded_msg)
+            if channel in [self._diff_messages_queue_key, self._trade_messages_queue_key]:
+                self._message_queue[channel].put_nowait(decoded_msg)
 
     def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
         channel = self._trade_messages_queue_key
@@ -156,3 +173,6 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 "bids": bids,
                 "asks": asks
             }, timestamp=timestamp)
+
+    async def _on_order_stream_interruption(self, websocket_assistant):
+        websocket_assistant and await websocket_assistant.close()

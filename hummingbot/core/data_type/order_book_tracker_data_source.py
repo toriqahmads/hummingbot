@@ -76,7 +76,7 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
         ws: Optional[WSAssistant] = None
         while True:
             try:
-                ws: WSAssistant = await self._connected_websocket_assistant()
+                ws = await self._connected_websocket_assistant()  # removing type hint as Bittrex does not create WSAssistant objects
                 await self._subscribe_channels(ws)
                 await self._process_websocket_messages(websocket_assistant=ws)
             except asyncio.CancelledError:
@@ -87,7 +87,8 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
                 )
                 await self._sleep(5.0)
             finally:
-                ws and await ws.disconnect()
+                # Replacing line with function to override for Bittrex
+                await self._on_order_stream_interruption(websocket_assistant=ws)
 
     async def listen_for_order_book_diffs(self, ev_loop: asyncio.AbstractEventLoop, output: asyncio.Queue):
         """
@@ -214,3 +215,6 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
 
     def _time(self):
         return time.time()
+
+    async def _on_order_stream_interruption(self, websocket_assistant):
+        websocket_assistant and await websocket_assistant.disconnect()

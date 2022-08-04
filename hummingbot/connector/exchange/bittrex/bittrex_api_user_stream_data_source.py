@@ -1,9 +1,15 @@
 import asyncio
+from base64 import b64decode
+from typing import Any, AsyncIterable, Dict, Optional
+from zlib import MAX_WBITS, decompress
+
+import signalr_aio
+import ujson
+from async_timeout import timeout
 
 from hummingbot.connector.exchange.bittrex import bittrex_constants as CONSTANTS
 from hummingbot.connector.exchange.bittrex.bittrex_auth import BittrexAuth
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
-from hummingbot.core.web_assistant.connections.data_types import WSJSONRequest, WSResponse
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 
 
@@ -16,18 +22,34 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
         self._auth = auth
         self._connector = connector
         self._api_factory = api_factory
+        self._websocket_connection: Optional[signalr_aio.Connection] = None
+        self.hub = None
+
+    @property
+    def last_recv_time(self) -> float:
+        """
+        Returns the time of the last received message
+
+        :return: the timestamp of the last received message in seconds
+        """
+        if self._ws_assistant:
+            return self._auth.time_provider.time()
+        return 0
 
     async def _get_ws_assistant(self) -> WSAssistant:
         if self._ws_assistant is None:
             self._ws_assistant = await self._api_factory.get_ws_assistant()
         return self._ws_assistant
 
-    async def _connected_websocket_assistant(self) -> WSAssistant:
-        ws: WSAssistant = await self._get_ws_assistant()
-        await ws.connect(ws_url=CONSTANTS.BITTREX_WS_URL, ping_timeout=CONSTANTS.PING_TIMEOUT)
-        return ws
+    async def _connected_websocket_assistant(self):
+        websocket_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
+        self.hub = websocket_connection.register_hub("c3")
+        auth_params = self._auth.generate_WS_auth_params()
+        self.hub.server.invoke("Authenticate", auth_params)
+        return websocket_connection
 
-    async def _authenticate_client(self, ws: WSAssistant):
+    # TODO Remove this code after verification
+    '''async def _authenticate_client(self, ws: WSAssistant):
         try:
             ws_request: WSJSONRequest = WSJSONRequest(
                 {
@@ -49,27 +71,42 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
             raise
         except Exception:
             self.logger().error("Error occurred authenticating websocket connection..")
-            raise
+            raise'''
 
-    async def _subscribe_channels(self, websocket_assistant: WSAssistant):
+    async def _subscribe_channels(self, websocket_assistant):
         try:
-            await self._authenticate_client(websocket_assistant)
-            payload = {
-                "H": "c3",
-                "M": "Subscribe",
-                "A": [["balance", "order", "heartbeat", "execution"]],
-                "I": 1
-            }
-            subscribe_private_channels__request: WSJSONRequest = WSJSONRequest(payload=payload)
-            await websocket_assistant.send(subscribe_private_channels__request)
-            resp: WSResponse = await websocket_assistant.receive()
-            sub_response = resp.data["R"]
-            resp_list = [resp["Success"] for resp in sub_response]
-            if not all(resp_list):
-                raise ValueError("Error subscribing to private channels")
+            self.hub.server.invoke("Subscribe", ["heartbeat", "order", "balance", "execution"])
+            websocket_assistant.start()
             self.logger().info("Successfully subscribed to private channels")
         except asyncio.CancelledError:
             raise
         except Exception:
-            self.logger().error("Cannot subscribe to private channel")
+            self.logger().error("Cannot subscribe to private channels")
             raise
+
+    def _decode_message(self, raw_message) -> Dict[str, Any]:
+        try:
+            decode_msg: bytes = decompress(b64decode(raw_message, validate=True), -MAX_WBITS)
+        except SyntaxError:
+            decode_msg: bytes = decompress(b64decode(raw_message, validate=True))
+        except Exception:
+            self.logger().error("Error decoding message", exc_info=True)
+
+        return ujson.loads(decode_msg.decode(), precise_float=True)
+
+    async def _socket_user_stream(self, conn: signalr_aio.Connection) -> AsyncIterable[str]:
+        try:
+            while True:
+                async with timeout(CONSTANTS.MESSAGE_TIMEOUT):
+                    msg = await conn.msg_queue.get()
+                    yield msg
+        except asyncio.TimeoutError:
+            self.logger().warning("Message recv() timed out. Reconnecting to Bittrex SignalR WebSocket... ")
+
+    async def _process_websocket_messages(self, websocket_assistant, queue: asyncio.Queue):
+        async for raw_message in self._socket_user_stream(websocket_assistant):
+            decoded_msg = self._decode_message(raw_message)
+            await self._process_event_message(event_message=decoded_msg, queue=queue)
+
+    async def _on_user_stream_interruption(self, websocket_assistant):
+        websocket_assistant and await websocket_assistant.close()
