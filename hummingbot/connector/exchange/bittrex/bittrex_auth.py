@@ -59,7 +59,7 @@ class BittrexAuth(AuthBase):
         return headers
 
     def generate_WS_auth_params(self):
-        timestamp = self.time_provider.time()
+        timestamp = int(self.time_provider.time() * 1000)
         randomized = str(uuid.uuid4())
         content_to_sign = f"{timestamp}{randomized}"
         signature = hmac.new(self.secret_key.encode(), content_to_sign.encode(), hashlib.sha512).hexdigest()

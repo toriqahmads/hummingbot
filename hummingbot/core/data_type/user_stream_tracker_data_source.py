@@ -44,7 +44,7 @@ class UserStreamTrackerDataSource(metaclass=ABCMeta):
             try:
                 self._ws_assistant = await self._connected_websocket_assistant()
                 await self._subscribe_channels(websocket_assistant=self._ws_assistant)
-                if isinstance(self._ws_assistant, WSAssistant):  # adding check because ws_assistant is not an object os WSAssistant for Bittrex
+                if isinstance(self._ws_assistant, WSAssistant):  # adding check because ws_assistant is not an object of WSAssistant for Bittrex
                     await self._ws_assistant.ping()  # to update last_recv_timestamp
                 await self._process_websocket_messages(websocket_assistant=self._ws_assistant, queue=output)
             except asyncio.CancelledError:

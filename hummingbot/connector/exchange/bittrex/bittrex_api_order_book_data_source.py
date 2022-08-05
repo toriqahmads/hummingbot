@@ -1,14 +1,11 @@
 import asyncio
 import time
-from base64 import b64decode
-from typing import Any, AsyncIterable, Dict, List, Optional
-from zlib import MAX_WBITS, decompress
+from typing import Any, Dict, List, Optional
 
 import signalr_aio
-import ujson
-from async_timeout import timeout
 
 from hummingbot.connector.exchange.bittrex import bittrex_constants as CONSTANTS, bittrex_web_utils as web_utils
+from hummingbot.connector.exchange.bittrex.bittrex_utils import _get_timestamp, _socket_stream, _transform_raw_message
 from hummingbot.core.data_type.common import TradeType
 from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
@@ -30,6 +27,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def _connected_websocket_assistant(self):
         ws_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
         self.hub = ws_connection.register_hub("c3")
+        ws_connection.start()
         return ws_connection
 
     async def get_last_traded_prices(self,
@@ -61,26 +59,6 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         )
         return snapshot_msg
 
-    # TODO Move utility functions to one single file after verification
-    async def _checked_socket_stream(self, connection: signalr_aio.Connection) -> AsyncIterable[str]:
-        try:
-            while True:
-                async with timeout(CONSTANTS.MESSAGE_TIMEOUT):  # Timeouts if not receiving any messages for 10 seconds(ping)
-                    msg = await connection.msg_queue.get()
-                    yield msg
-        except asyncio.TimeoutError:
-            self.logger().warning("Message queue get() timed out. Going to reconnect...")
-
-    def _decode_message(self, raw_message) -> Dict[str, Any]:
-        try:
-            decoded_msg: bytes = decompress(b64decode(raw_message, validate=True), -MAX_WBITS)
-        except SyntaxError:
-            decoded_msg: bytes = decompress(b64decode(raw_message, validate=True))
-        except Exception:
-            return {}
-
-        return ujson.loads(decoded_msg.decode())
-
     async def _subscribe_channels(self, ws: WSAssistant):
         try:
             trading_symbols = [await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
@@ -89,9 +67,6 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             subscription_names.extend([f"orderbook_{symbol}_25" for symbol in trading_symbols])
             self.hub.server.invoke("Subscribe", subscription_names)
             self.logger().info("Subscribed to public order book and trade channels...")
-
-            ws.start()
-            self.logger().info("Websocket connection started...")
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -102,15 +77,17 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             raise
 
     async def _process_websocket_messages(self, websocket_assistant):
-        async for raw_message in self._checked_socket_stream(websocket_assistant):
-            decoded_msg: Dict[str, Any] = self._decode_message(raw_message)
+        async for raw_message in _socket_stream(caller_class=self, conn=websocket_assistant):
+            decoded_msg: Dict[str, Any] = _transform_raw_message(raw_message)
+            if decoded_msg["type"] is None:
+                continue
             channel: str = self._channel_originating_message(event_message=decoded_msg)
             if channel in [self._diff_messages_queue_key, self._trade_messages_queue_key]:
-                self._message_queue[channel].put_nowait(decoded_msg)
+                self._message_queue[channel].put_nowait(decoded_msg["results"])
 
-    def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
+    def _channel_originating_message(self, event_message) -> str:
         channel = self._trade_messages_queue_key
-        if "depth" in event_message:
+        if event_message["type"] == "orderBook":
             channel = self._diff_messages_queue_key
         return channel
 
@@ -156,7 +133,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 "update_id": msg["sequence"],
                 "price": msg["rate"],
                 "amount": msg["quantity"]
-            }, timestamp=float(msg["executedAt"]))
+            }, timestamp=_get_timestamp(msg["executedAt"]))
 
     def diff_message_from_exchange(self, msg: Dict[str, any],
                                    timestamp: Optional[float] = None,
@@ -175,4 +152,4 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             }, timestamp=timestamp)
 
     async def _on_order_stream_interruption(self, websocket_assistant):
-        websocket_assistant and await websocket_assistant.close()
+        websocket_assistant and websocket_assistant.close()

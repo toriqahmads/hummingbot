@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -14,6 +13,7 @@ from hummingbot.connector.exchange.bittrex import (
 from hummingbot.connector.exchange.bittrex.bittrex_api_order_book_data_source import BittrexAPIOrderBookDataSource
 from hummingbot.connector.exchange.bittrex.bittrex_api_user_stream_data_source import BittrexAPIUserStreamDataSource
 from hummingbot.connector.exchange.bittrex.bittrex_auth import BittrexAuth
+from hummingbot.connector.exchange.bittrex.bittrex_utils import _get_timestamp
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
 from hummingbot.connector.utils import combine_to_hb_trading_pair, split_hb_trading_pair
@@ -100,9 +100,7 @@ class BittrexExchange(ExchangePyBase):
         return [OrderType.LIMIT, OrderType.MARKET]
 
     def _is_request_exception_related_to_time_synchronizer(self, request_exception: Exception):
-        error_description = str(request_exception)
-        is_time_synchronizer_related = '{"code":"INVALID_TIMESTAMP"}' in error_description
-        return is_time_synchronizer_related
+        return False
 
     def _create_web_assistants_factory(self) -> WebAssistantsFactory:
         return web_utils.build_api_factory(
@@ -156,7 +154,7 @@ class BittrexExchange(ExchangePyBase):
             data=body,
             is_auth_required=True)
         o_id = order_result["id"]
-        transact_time = self._get_timestamp(order_result["createdAt"])
+        transact_time = _get_timestamp(order_result["createdAt"])
         return o_id, transact_time
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
@@ -203,7 +201,7 @@ class BittrexExchange(ExchangePyBase):
                                           min_notional_size=Decimal(precision)
                                           ))
             except KeyError:
-                self.logger().error(f"Trading-pair {market['symbol']} is not active. Skipping.", exc_info=True)
+                self.logger().info(f"Trading-pair {market['symbol']} is not active. Skipping.")
                 continue
             except Exception:
                 self.logger().error(f"Error parsing the trading pair rule {market}. Skipping.", exc_info=True)
@@ -247,7 +245,7 @@ class BittrexExchange(ExchangePyBase):
                 fill_base_amount=Decimal(trade["quantity"]),
                 fill_quote_amount=Decimal(trade["quantity"]) * Decimal(trade["rate"]),
                 fill_price=Decimal(trade["rate"]),
-                fill_timestamp=self._get_timestamp(trade["executedAt"]),
+                fill_timestamp=_get_timestamp(trade["executedAt"]),
             )
             trade_updates.append(trade_update)
 
@@ -265,7 +263,7 @@ class BittrexExchange(ExchangePyBase):
             limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID
         )
         new_state = self._get_order_status(order_update)
-        update_time = self._get_timestamp(order_update["updatedAt"])
+        update_time = _get_timestamp(order_update["updatedAt"])
         update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=exchange_order_id,
@@ -297,7 +295,7 @@ class BittrexExchange(ExchangePyBase):
 
     async def _process_order_update_event(self, msg: Dict[str, Any]):
         order_id = msg["id"]
-        update_time = self._get_timestamp(msg["updatedAt"])
+        update_time = _get_timestamp(msg["updatedAt"])
         order_state = self._get_order_status(msg)
         tracked_order = self._order_tracker.all_updatable_orders.get(msg["clientOrderId"])
         if tracked_order is not None:
@@ -337,7 +335,7 @@ class BittrexExchange(ExchangePyBase):
                     fill_base_amount=Decimal(execution_event["quantity"]),
                     fill_quote_amount=Decimal(execution_event["quantity"] * execution_event["rate"]),
                     fill_price=Decimal(execution_event["rate"]),
-                    fill_timestamp=self._get_timestamp(execution_event["executedAt"]),
+                    fill_timestamp=_get_timestamp(execution_event["executedAt"]),
                 )
                 self._order_tracker.process_trade_update(trade_update)
 
@@ -380,11 +378,6 @@ class BittrexExchange(ExchangePyBase):
             limit_id=CONSTANTS.SYMBOL_TICKER_LIMIT_ID
         )
         return resp["lastTradeRate"]
-
-    @staticmethod
-    def _get_timestamp(transact_info):
-        transact_time_info = datetime.datetime.strptime(transact_info, '%Y-%m-%d %H:%M:%S.%f')
-        return datetime.datetime.timestamp(transact_time_info)
 
     @staticmethod
     def _get_order_status(order):
