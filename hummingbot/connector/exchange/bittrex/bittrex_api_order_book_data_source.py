@@ -15,6 +15,9 @@ from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 
 
 class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
+    LOCK = asyncio.Lock()
+    INVOCATION_EVENT = None
+    INVOCATION_RESPONSE = None
 
     def __init__(self, trading_pairs: List[str], connector, api_factory: WebAssistantsFactory, ):
         super().__init__(trading_pairs)
@@ -27,6 +30,8 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def _connected_websocket_assistant(self):
         ws_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
         self.hub = ws_connection.register_hub("c3")
+        ws_connection.received += self.handler
+        ws_connection.error += self.handler
         ws_connection.start()
         return ws_connection
 
@@ -65,25 +70,39 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                                for trading_pair in self._trading_pairs]
             subscription_names = [f"trade_{symbol}" for symbol in trading_symbols]
             subscription_names.extend([f"orderbook_{symbol}_25" for symbol in trading_symbols])
-            self.hub.server.invoke("Subscribe", subscription_names)
-            self.logger().info("Subscribed to public order book and trade channels...")
+            response = await self.invoke("Subscribe", [subscription_names])
+            flag = True
+            for i in range(len(subscription_names)):
+                if not response[i]['Success']:
+                    flag = False
+                    print("Subscription to '" + subscription_names[i] + "' failed: " + response[i]["ErrorCode"])
+            if flag:
+                self.logger().info("Subscribed to public order book and trade channels...")
+            else:
+                raise
         except asyncio.CancelledError:
             raise
         except Exception:
             self.logger().error(
-                "Unexpected error occurred subscribing to order book trading and delta streams...",
+                "Failed to subscribe to public order book and trade channels...",
                 exc_info=True
             )
             raise
 
     async def _process_websocket_messages(self, websocket_assistant):
-        async for raw_message in _socket_stream(caller_class=self, conn=websocket_assistant):
-            decoded_msg: Dict[str, Any] = _transform_raw_message(raw_message)
-            if decoded_msg["type"] is None:
-                continue
-            channel: str = self._channel_originating_message(event_message=decoded_msg)
-            if channel in [self._diff_messages_queue_key, self._trade_messages_queue_key]:
-                self._message_queue[channel].put_nowait(decoded_msg["results"])
+        """
+        Overriding method for Bittrex signalr
+        """
+        async for raw_message in _socket_stream(conn=websocket_assistant):
+            try:
+                decoded_msg: Dict[str, Any] = _transform_raw_message(raw_message)
+                if decoded_msg["type"] is None:
+                    continue
+                channel: str = self._channel_originating_message(event_message=decoded_msg)
+                if channel in [self._diff_messages_queue_key, self._trade_messages_queue_key]:
+                    self._message_queue[channel].put_nowait(decoded_msg["results"])
+            except Exception:
+                self.logger().exception("Unexpected error while decoding websocket message...")
 
     def _channel_originating_message(self, event_message) -> str:
         channel = self._trade_messages_queue_key
@@ -153,3 +172,15 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _on_order_stream_interruption(self, websocket_assistant):
         websocket_assistant and websocket_assistant.close()
+
+    async def invoke(self, method, args):
+        async with self.LOCK:
+            self.INVOCATION_EVENT = asyncio.Event()
+            self.hub.server.invoke(method, *args)
+            await self.INVOCATION_EVENT.wait()
+            return self.INVOCATION_RESPONSE
+
+    async def handler(self, **msg):
+        if 'R' in msg:
+            self.INVOCATION_RESPONSE = msg['R']
+            self.INVOCATION_EVENT.set()

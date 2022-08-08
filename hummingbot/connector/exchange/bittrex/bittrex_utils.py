@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 from base64 import b64decode
 from decimal import Decimal
@@ -56,19 +55,16 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     return False
 
 
-def _get_timestamp(transact_info):
+def _get_timestamp(transact_info: str):
     transact_time_info = datetime.datetime.strptime(transact_info, '%Y-%m-%dT%H:%M:%S.%fZ')
     return datetime.datetime.timestamp(transact_time_info)
 
 
-async def _socket_stream(caller_class, conn: signalr_aio.Connection) -> AsyncIterable[str]:
-    try:
-        while True:
-            async with timeout(CONSTANTS.MESSAGE_TIMEOUT):
-                msg = await conn.msg_queue.get()
-                yield msg
-    except asyncio.TimeoutError:
-        caller_class.logger().warning("Message queue timed out. Reconnecting... ")
+async def _socket_stream(conn: signalr_aio.Connection) -> AsyncIterable[str]:
+    while True:
+        async with timeout(CONSTANTS.MESSAGE_TIMEOUT):
+            msg = await conn.msg_queue.get()
+            yield msg
 
 
 def _decode_message(raw_message: bytes) -> Dict[str, Any]:

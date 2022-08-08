@@ -87,7 +87,7 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
                 )
                 await self._sleep(5.0)
             finally:
-                # Replacing line with function to override for Bittrex
+                # Replacing line with function to override for connectors with their own WS client
                 await self._on_order_stream_interruption(websocket_assistant=ws)
 
     async def listen_for_order_book_diffs(self, ev_loop: asyncio.AbstractEventLoop, output: asyncio.Queue):

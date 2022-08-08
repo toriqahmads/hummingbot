@@ -291,7 +291,6 @@ class BittrexExchange(ExchangePyBase):
                 raise
             except Exception:
                 self.logger().error("Unexpected error in user stream listener loop.", exc_info=True)
-                await self._sleep(5.0)
 
     async def _process_order_update_event(self, msg: Dict[str, Any]):
         order_id = msg["id"]
