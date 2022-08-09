@@ -45,6 +45,7 @@ class BittrexExchange(ExchangePyBase):
         self._trading_required = trading_required
         self._trading_pairs = trading_pairs
         super().__init__(client_config_map)
+        self.check_network_interval = 35
 
     @property
     def name(self) -> str:
@@ -104,7 +105,6 @@ class BittrexExchange(ExchangePyBase):
 
     def _create_web_assistants_factory(self) -> WebAssistantsFactory:
         return web_utils.build_api_factory(
-            throttler=self._throttler,
             time_synchronizer=self._time_synchronizer,
             auth=self._auth)
 

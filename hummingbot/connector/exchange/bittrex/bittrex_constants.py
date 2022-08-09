@@ -45,16 +45,16 @@ ORDER_DETAIL_LIMIT_ID = "orderDel"
 SYMBOL_TICKER_LIMIT_ID = "ticker"
 
 RATE_LIMITS = [
-    RateLimit(limit_id=ORDERBOOK_SNAPSHOT_LIMIT_ID, limit=60, time_interval=60),
-    RateLimit(limit_id=SERVER_TIME_URL, limit=60, time_interval=60),
-    RateLimit(limit_id=EXCHANGE_INFO_PATH_URL, limit=60, time_interval=60),
-    RateLimit(limit_id=ORDER_CREATION_URL, limit=60, time_interval=60),
-    RateLimit(limit_id=ORDER_DETAIL_LIMIT_ID, limit=60, time_interval=60),
-    RateLimit(limit_id=ALL_OPEN_ORDERS_URL, limit=60, time_interval=60),
-    RateLimit(limit_id=ALL_CLOSED_ORDERS_URL, limit=60, time_interval=60),
-    RateLimit(limit_id=SYMBOL_TICKER_LIMIT_ID, limit=60, time_interval=60),
-    RateLimit(limit_id=FEES_URL, limit=60, time_interval=60),
-    RateLimit(limit_id=BALANCES_URL, limit=60, time_interval=60),
-    RateLimit(limit_id=ALL_TRADES_URL, limit=60, time_interval=60),
+    RateLimit(limit_id=ORDERBOOK_SNAPSHOT_LIMIT_ID, limit=1, time_interval=1),
+    RateLimit(limit_id=SERVER_TIME_URL, limit=1, time_interval=1),
+    RateLimit(limit_id=EXCHANGE_INFO_PATH_URL, limit=1, time_interval=1),
+    RateLimit(limit_id=ORDER_CREATION_URL, limit=1, time_interval=1),
+    RateLimit(limit_id=ORDER_DETAIL_LIMIT_ID, limit=1, time_interval=1),
+    RateLimit(limit_id=ALL_OPEN_ORDERS_URL, limit=1, time_interval=1),
+    RateLimit(limit_id=ALL_CLOSED_ORDERS_URL, limit=1, time_interval=1),
+    RateLimit(limit_id=SYMBOL_TICKER_LIMIT_ID, limit=1, time_interval=1),
+    RateLimit(limit_id=FEES_URL, limit=1, time_interval=1),
+    RateLimit(limit_id=BALANCES_URL, limit=1, time_interval=1),
+    RateLimit(limit_id=ALL_TRADES_URL, limit=1, time_interval=1),
 
 ]
