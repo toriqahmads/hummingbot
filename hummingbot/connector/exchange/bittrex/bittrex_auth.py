@@ -4,8 +4,6 @@ import urllib
 import uuid
 from typing import Any, Dict
 
-import ujson
-
 from hummingbot.connector.time_synchronizer import TimeSynchronizer
 from hummingbot.core.web_assistant.auth import AuthBase
 from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSRequest
@@ -19,7 +17,7 @@ class BittrexAuth(AuthBase):
 
     async def rest_authenticate(self, request: RESTRequest) -> RESTRequest:
         headers = {}
-        if request.headers is not None:
+        if request.headers:
             headers.update(request.headers)
         headers.update(self.generate_REST_auth_params(request=request))
         request.headers = headers
@@ -30,18 +28,16 @@ class BittrexAuth(AuthBase):
 
     @staticmethod
     def construct_content_hash(body) -> str:
-        json_byte: bytes = "".encode()
+        json_byte = "".encode()
         if body:
-            json_byte = ujson.dumps(body).encode()
+            json_byte = body.encode()
             return hashlib.sha512(json_byte).hexdigest()
         return hashlib.sha512(json_byte).hexdigest()
 
     def generate_REST_auth_params(self, request: RESTRequest) -> Dict[str, Any]:
         timestamp = str(int(self.time_provider.time() * 1000))
         url = request.url
-        request_body = {}
-        if "body" in request.__dict__:
-            request_body = request.body
+        request_body = request.data
         content_hash = self.construct_content_hash(request_body)
         if request.params:
             param_str = urllib.parse.urlencode(request.params)

@@ -98,7 +98,7 @@ class BittrexExchange(ExchangePyBase):
         return self._trading_required
 
     def supported_order_types(self):
-        return [OrderType.LIMIT, OrderType.MARKET]
+        return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
 
     def _is_request_exception_related_to_time_synchronizer(self, request_exception: Exception):
         return False
@@ -133,24 +133,20 @@ class BittrexExchange(ExchangePyBase):
         body = {
             "marketSymbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
             "direction": "BUY" if trade_type is TradeType.BUY else "SELL",
-            "type": "LIMIT" if order_type is OrderType.LIMIT else "MARKET",
-            "quantity": float(amount),
-            "clientOrderId": order_id
+            "type": "LIMIT",
+            "quantity": f"{amount:f}",
+            "limit": f"{price:f}",
         }
         if order_type is OrderType.LIMIT:
             body.update({
-                "limit": float(price),
                 "timeInForce": "GOOD_TIL_CANCELLED"
-                # Available options [GOOD_TIL_CANCELLED, IMMEDIATE_OR_CANCEL,
-                # FILL_OR_KILL, POST_ONLY_GOOD_TIL_CANCELLED]
             })
-        elif order_type is OrderType.MARKET:
+        elif order_type is OrderType.LIMIT_MAKER:
             body.update({
-                "timeInForce": "IMMEDIATE_OR_CANCEL"
+                "timeInForce": "POST_ONLY_GOOD_TIL_CANCELLED"
             })
         order_result = await self._api_post(
             path_url=path_url,
-            params=body,
             data=body,
             is_auth_required=True)
         o_id = order_result["id"]
@@ -160,7 +156,7 @@ class BittrexExchange(ExchangePyBase):
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         exchange_id = await tracked_order.get_exchange_order_id()
         api_params = {
-            "id": exchange_id
+            "orderId": exchange_id
         }
         cancel_result = await self._api_delete(
             path_url=CONSTANTS.ORDER_DETAIL_URL.format(exchange_id),
@@ -195,10 +191,9 @@ class BittrexExchange(ExchangePyBase):
                 min_trade_size = market.get("minTradeSize")
                 precision = market.get("precision")
                 retval.append(TradingRule(trading_pair,
-                                          min_order_size=min_trade_size,
-                                          min_price_increment=Decimal(precision),
-                                          min_base_amount_increment=Decimal(precision),
-                                          min_notional_size=Decimal(precision)
+                                          min_order_size=Decimal(min_trade_size),
+                                          min_price_increment=Decimal(f"1e-{precision}"),
+                                          min_base_amount_increment=Decimal(f"1e-{precision}"),
                                           ))
             except KeyError:
                 self.logger().info(f"Trading-pair {market['symbol']} is not active. Skipping.")
@@ -296,13 +291,18 @@ class BittrexExchange(ExchangePyBase):
         order_id = msg["id"]
         update_time = _get_timestamp(msg["updatedAt"])
         order_state = self._get_order_status(msg)
-        tracked_order = self._order_tracker.all_updatable_orders.get(msg["clientOrderId"])
+        tracked_order = None
+        for order in self._order_tracker.all_updatable_orders.values():
+            exchange_order_id = await order.get_exchange_order_id()
+            if exchange_order_id == order_id:
+                tracked_order = order
+                break
         if tracked_order is not None:
             order_update = OrderUpdate(
                 trading_pair=tracked_order.trading_pair,
                 update_timestamp=update_time,
                 new_state=order_state,
-                client_order_id=msg["clientOrderId"],
+                client_order_id=tracked_order.client_order_id,
                 exchange_order_id=order_id,
             )
             self._order_tracker.process_order_update(order_update=order_update)
@@ -383,7 +383,7 @@ class BittrexExchange(ExchangePyBase):
         order_state = order["status"]
         new_state = ""
         if order_state == "OPEN":
-            if order["fillQuantity"] < order["quantity"] and order["fillQuantity"] > 0:
+            if float(order["fillQuantity"]) < float(order["quantity"]) and float(order["fillQuantity"]) > 0:
                 new_state = CONSTANTS.ORDER_STATE[order_state + "-PARTIAL"]
             else:
                 new_state = CONSTANTS.ORDER_STATE[order_state]
