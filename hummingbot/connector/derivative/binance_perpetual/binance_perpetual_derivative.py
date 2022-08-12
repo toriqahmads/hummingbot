@@ -4,7 +4,7 @@ import time
 import warnings
 from collections import defaultdict
 from decimal import Decimal
-from typing import Any, AsyncIterable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterable, Dict, List, Optional
 
 from async_timeout import timeout
 
@@ -33,6 +33,7 @@ from hummingbot.connector.utils import combine_to_hb_trading_pair, get_new_clien
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.data_type.cancellation_result import CancellationResult
 from hummingbot.core.data_type.common import OrderType, PositionAction, PositionMode, PositionSide, TradeType
+from hummingbot.core.data_type.funding_info import FundingInfo
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.limit_order import LimitOrder
 from hummingbot.core.data_type.order_book import OrderBook
@@ -40,7 +41,6 @@ from hummingbot.core.data_type.trade_fee import TokenAmount, TradeFeeBase
 from hummingbot.core.data_type.user_stream_tracker import UserStreamTracker
 from hummingbot.core.event.events import (
     AccountEvent,
-    FundingInfo,
     FundingPaymentCompletedEvent,
     MarketEvent,
     PositionModeChangeEvent,
@@ -51,6 +51,9 @@ from hummingbot.core.web_assistant.connections.data_types import RESTMethod
 from hummingbot.core.web_assistant.rest_assistant import RESTAssistant
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
+
+if TYPE_CHECKING:
+    from hummingbot.client.config.config_helpers import ClientConfigAdapter
 
 bpm_logger = None
 
@@ -74,6 +77,7 @@ class BinancePerpetualDerivative(ExchangeBase, PerpetualTrading):
 
     def __init__(
             self,
+            client_config_map: "ClientConfigAdapter",
             binance_perpetual_api_key: str = None,
             binance_perpetual_api_secret: str = None,
             trading_pairs: Optional[List[str]] = None,
@@ -86,7 +90,7 @@ class BinancePerpetualDerivative(ExchangeBase, PerpetualTrading):
                                                                 time_provider=self._binance_time_synchronizer)
         self._trading_pairs = trading_pairs
         self._trading_required = trading_required
-        self._throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS)
+        self._throttler = AsyncThrottler(CONSTANTS.RATE_LIMITS, client_config_map.rate_limits_share_pct)
         self._domain = domain
         self._api_factory = web_utils.build_api_factory(
             throttler=self._throttler,
@@ -96,8 +100,8 @@ class BinancePerpetualDerivative(ExchangeBase, PerpetualTrading):
         self._rest_assistant: Optional[RESTAssistant] = None
         self._ws_assistant: Optional[WSAssistant] = None
 
-        ExchangeBase.__init__(self)
-        PerpetualTrading.__init__(self)
+        ExchangeBase.__init__(self, client_config_map=client_config_map)
+        PerpetualTrading.__init__(self, self._trading_pairs)
 
         self._user_stream_tracker = UserStreamTracker(
             data_source=BinancePerpetualUserStreamDataSource(

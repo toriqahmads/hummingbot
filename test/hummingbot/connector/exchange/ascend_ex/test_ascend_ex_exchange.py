@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from aioresponses import aioresponses
 from bidict import bidict
 
+from hummingbot.client.config.client_config_map import ClientConfigMap
+from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.ascend_ex import ascend_ex_constants as CONSTANTS, ascend_ex_utils
 from hummingbot.connector.exchange.ascend_ex.ascend_ex_api_order_book_data_source import AscendExAPIOrderBookDataSource
 from hummingbot.connector.exchange.ascend_ex.ascend_ex_exchange import (
@@ -48,8 +50,13 @@ class TestAscendExExchange(unittest.TestCase):
         super().setUp()
         self.log_records = []
         self.async_task: Optional[asyncio.Task] = None
+        self.client_config_map = ClientConfigAdapter(ClientConfigMap())
 
-        self.exchange = AscendExExchange(self.api_key, self.api_secret_key, trading_pairs=[self.trading_pair])
+        self.exchange = AscendExExchange(
+            client_config_map=self.client_config_map,
+            ascend_ex_api_key=self.api_key,
+            ascend_ex_secret_key=self.api_secret_key,
+            trading_pairs=[self.trading_pair])
         self.mocking_assistant = NetworkMockingAssistant()
         self.resume_test_event = asyncio.Event()
         self._initialize_event_loggers()
@@ -105,6 +112,7 @@ class TestAscendExExchange(unittest.TestCase):
                 commission_reserve_rate=Decimal("0.002"),
             ),
         }
+        self.exchange._trading_rules[self.trading_pair].min_order_size = Decimal(str(0.01))
 
     def _create_exception_and_unlock_test_with_event(self, exception):
         self.resume_test_event.set()
@@ -1467,27 +1475,26 @@ class TestAscendExExchange(unittest.TestCase):
 
         mock_price.return_value = Decimal(98.7)
 
-        is_exception = False
-        exception_msg = ""
-
-        try:
-            self.async_run_with_timeout(self.exchange._create_order(
-                trade_type=TradeType.BUY,
-                order_id="testOrderId1",
-                trading_pair=self.trading_pair,
-                amount=Decimal(0),
-                order_type=OrderType.LIMIT,
-                price=Decimal(99),
-            ))
-        except ValueError as e:
-            is_exception = True
-            exception_msg = str(e)
+        self.async_run_with_timeout(self.exchange._create_order(
+            trade_type=TradeType.BUY,
+            order_id="testOrderId1",
+            trading_pair=self.trading_pair,
+            amount=Decimal(0),
+            order_type=OrderType.LIMIT,
+            price=Decimal(99),
+        ))
 
         self.assertNotIn("testOrderId1", self.exchange.in_flight_orders)
-        self.assertTrue(is_exception)
-        self.assertEqual("Order amount must be greater than zero.", exception_msg)
+        self.assertTrue(
+            self._is_logged(
+                "ERROR",
+                "Buy order amount 0 is lower than the minimum order size 0.01."
+            )
+        )
 
     def test_create_order_unsupported_order(self):
+        self._simulate_trading_rules_initialized()
+
         is_exception = False
         exception_msg = ""
 

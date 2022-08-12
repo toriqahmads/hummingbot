@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from aioresponses import aioresponses
 from bidict import bidict
 
-from hummingbot.connector.client_order_tracker import ClientOrderTracker
+from hummingbot.client.config.client_config_map import ClientConfigMap
+from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.exchange.gate_io import gate_io_constants as CONSTANTS
 from hummingbot.connector.exchange.gate_io.gate_io_exchange import GateIoExchange
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
@@ -51,8 +52,13 @@ class TestGateIoExchange(unittest.TestCase):
         self.log_records = []
         self.mocking_assistant = NetworkMockingAssistant()
         self.async_tasks: List[asyncio.Task] = []
+        self.client_config_map = ClientConfigAdapter(ClientConfigMap())
 
-        self.exchange = GateIoExchange(self.api_key, self.api_secret, trading_pairs=[self.trading_pair])
+        self.exchange = GateIoExchange(
+            client_config_map=self.client_config_map,
+            gate_io_api_key=self.api_key,
+            gate_io_secret_key=self.api_secret,
+            trading_pairs=[self.trading_pair])
 
         self.exchange.logger().setLevel(1)
         self.exchange.logger().addHandler(self)
@@ -597,7 +603,7 @@ class TestGateIoExchange(unittest.TestCase):
                 "INFO",
                 f"Order OID1 has failed. Order Update: OrderUpdate(trading_pair='{self.trading_pair}', "
                 f"update_timestamp={self.exchange.current_timestamp}, new_state={repr(OrderState.FAILED)}, "
-                f"client_order_id='OID1', exchange_order_id=None)"
+                "client_order_id='OID1', exchange_order_id=None, misc_updates=None)"
             )
         )
 
@@ -714,7 +720,7 @@ class TestGateIoExchange(unittest.TestCase):
         )
 
         # After the fourth time not finding the exchange order id the order should be marked as failed
-        for i in range(ClientOrderTracker.ORDER_NOT_FOUND_COUNT_LIMIT + 1):
+        for i in range(self.exchange._order_tracker._lost_order_count_limit + 1):
             self.async_run_with_timeout(self.exchange._execute_cancel(
                 trading_pair=order.trading_pair,
                 order_id=order.client_order_id,
@@ -943,11 +949,11 @@ class TestGateIoExchange(unittest.TestCase):
 
         self.assertTrue(
             self._is_logged(
-                "WARNING",
-                f"Failed to fetch order status updates for order {order.client_order_id}. "
-                f"Response: Error executing request GET "
+                "NETWORK",
+                f"Error fetching status update for the order {order.client_order_id}: "
+                f"Error executing request GET "
                 f"{CONSTANTS.REST_URL}/{CONSTANTS.ORDER_STATUS_PATH_URL.format(order_id=order.exchange_order_id)}. "
-                f"HTTP status is 404. Error: "
+                f"HTTP status is 404. Error: ."
             )
         )
 

@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import logging
+import sys
 from decimal import Decimal
 from typing import Any, Dict, List, Set
 
@@ -54,10 +55,16 @@ class ScriptStrategyBase(StrategyPyBase):
 
         :param script_name: name of the module where the script class is defined
         """
-        script_module = importlib.import_module(f".{script_name}", package=SCRIPT_STRATEGIES_MODULE)
+        module = sys.modules.get(f"{SCRIPT_STRATEGIES_MODULE}.{script_name}")
+        if module is not None:
+            script_module = importlib.reload(module)
+        else:
+            script_module = importlib.import_module(f".{script_name}", package=SCRIPT_STRATEGIES_MODULE)
         try:
             script_class = next((member for member_name, member in inspect.getmembers(script_module)
-                                 if inspect.isclass(member) and issubclass(member, cls)))
+                                 if inspect.isclass(member) and
+                                 issubclass(member, ScriptStrategyBase) and
+                                 member is not ScriptStrategyBase))
         except StopIteration:
             raise InvalidScriptModule(f"The module {script_name} does not contain any subclass of ScriptStrategyBase")
         return script_class
