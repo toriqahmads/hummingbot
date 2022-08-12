@@ -215,34 +215,35 @@ class BittrexExchange(ExchangePyBase):
                 continue
 
     async def _all_trade_updates_for_order(self, order: InFlightOrder) -> List[TradeUpdate]:
-        exchange_order_id = await order.get_exchange_order_id()
-        trades_from_exchange = await self._api_get(
-            path_url=CONSTANTS.ALL_TRADES_URL,
-            is_auth_required=True,
-        )
         trade_updates = []
-        for trade in trades_from_exchange:
-            if trade["orderId"] != exchange_order_id:
-                continue
-            percent_token = split_hb_trading_pair(order.trading_pair)[-1]
-            fee = TradeFeeBase.new_spot_fee(
-                fee_schema=self.trade_fee_schema(),
-                trade_type=order.trade_type,
-                percent_token=percent_token,
-                flat_fees=[TokenAmount(amount=Decimal(trade["commission"]), token=percent_token)]
+        if order.exchange_order_id is not None:
+            exchange_order_id = await order.get_exchange_order_id()
+            trades_from_exchange = await self._api_get(
+                path_url=CONSTANTS.ALL_TRADES_URL,
+                is_auth_required=True,
             )
-            trade_update = TradeUpdate(
-                trade_id=str(trade["id"]),
-                client_order_id=order.client_order_id,
-                exchange_order_id=exchange_order_id,
-                trading_pair=order.trading_pair,
-                fee=fee,
-                fill_base_amount=Decimal(trade["quantity"]),
-                fill_quote_amount=Decimal(trade["quantity"]) * Decimal(trade["rate"]),
-                fill_price=Decimal(trade["rate"]),
-                fill_timestamp=_get_timestamp(trade["executedAt"]),
-            )
-            trade_updates.append(trade_update)
+            for trade in trades_from_exchange:
+                if trade["orderId"] != exchange_order_id:
+                    continue
+                percent_token = split_hb_trading_pair(order.trading_pair)[-1]
+                fee = TradeFeeBase.new_spot_fee(
+                    fee_schema=self.trade_fee_schema(),
+                    trade_type=order.trade_type,
+                    percent_token=percent_token,
+                    flat_fees=[TokenAmount(amount=Decimal(trade["commission"]), token=percent_token)]
+                )
+                trade_update = TradeUpdate(
+                    trade_id=str(trade["id"]),
+                    client_order_id=order.client_order_id,
+                    exchange_order_id=exchange_order_id,
+                    trading_pair=order.trading_pair,
+                    fee=fee,
+                    fill_base_amount=Decimal(trade["quantity"]),
+                    fill_quote_amount=Decimal(trade["quantity"]) * Decimal(trade["rate"]),
+                    fill_price=Decimal(trade["rate"]),
+                    fill_timestamp=_get_timestamp(trade["executedAt"]),
+                )
+                trade_updates.append(trade_update)
 
         return trade_updates
 
@@ -276,8 +277,8 @@ class BittrexExchange(ExchangePyBase):
                     safe_ensure_future(self._process_execution_event(content))
                 elif "marketSymbol" not in content:
                     asset_name = content["currencySymbol"]
-                    total_balance = content["total"]
-                    available_balance = content["available"]
+                    total_balance = Decimal(content["total"])
+                    available_balance = Decimal(content["available"])
                     self._account_available_balances[asset_name] = available_balance
                     self._account_balances[asset_name] = total_balance
                 else:
@@ -293,6 +294,8 @@ class BittrexExchange(ExchangePyBase):
         order_state = self._get_order_status(msg)
         tracked_order = None
         for order in self._order_tracker.all_updatable_orders.values():
+            if order.exchange_order_id is None:
+                continue
             exchange_order_id = await order.get_exchange_order_id()
             if exchange_order_id == order_id:
                 tracked_order = order
@@ -312,6 +315,8 @@ class BittrexExchange(ExchangePyBase):
             order_id = execution_event["orderId"]
             tracked_order = None
             for order in self._order_tracker.all_fillable_orders.values():
+                if order.exchange_order_id is None:
+                    continue
                 exchange_order_id = await order.get_exchange_order_id()
                 if exchange_order_id == order_id:
                     tracked_order = order
@@ -332,7 +337,7 @@ class BittrexExchange(ExchangePyBase):
                     trading_pair=tracked_order.trading_pair,
                     fee=fee,
                     fill_base_amount=Decimal(execution_event["quantity"]),
-                    fill_quote_amount=Decimal(execution_event["quantity"] * execution_event["rate"]),
+                    fill_quote_amount=Decimal(execution_event["quantity"]) * Decimal(execution_event["rate"]),
                     fill_price=Decimal(execution_event["rate"]),
                     fill_timestamp=_get_timestamp(execution_event["executedAt"]),
                 )
