@@ -16,7 +16,7 @@ from hummingbot.connector.exchange.bittrex.bittrex_auth import BittrexAuth
 from hummingbot.connector.exchange.bittrex.bittrex_utils import _get_timestamp
 from hummingbot.connector.exchange_py_base import ExchangePyBase
 from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.connector.utils import combine_to_hb_trading_pair, split_hb_trading_pair
+from hummingbot.connector.utils import combine_to_hb_trading_pair
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderUpdate, TradeUpdate
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
@@ -67,7 +67,7 @@ class BittrexExchange(ExchangePyBase):
 
     @property
     def client_order_id_max_length(self):
-        return None
+        return CONSTANTS.MAX_CLIENT_ID_LENGTH
 
     @property
     def client_order_id_prefix(self):
@@ -115,10 +115,7 @@ class BittrexExchange(ExchangePyBase):
             api_factory=self._web_assistants_factory)
 
     def _create_user_stream_data_source(self) -> UserStreamTrackerDataSource:
-        return BittrexAPIUserStreamDataSource(
-            auth=self._auth,
-            connector=self,
-            api_factory=self._web_assistants_factory)
+        return BittrexAPIUserStreamDataSource(auth=self._auth)
 
     async def _place_order(self,
                            order_id: str,
@@ -126,13 +123,14 @@ class BittrexExchange(ExchangePyBase):
                            amount: Decimal,
                            trade_type: TradeType,
                            order_type: OrderType,
-                           price: Decimal
+                           price: Decimal,
+                           **kwargs
                            ) -> Tuple[str, float]:
 
         path_url = CONSTANTS.ORDER_CREATION_URL
         body = {
             "marketSymbol": await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
-            "direction": "BUY" if trade_type is TradeType.BUY else "SELL",
+            "direction": trade_type.name,
             "type": "LIMIT",
             "quantity": f"{amount:f}",
             "limit": f"{price:f}",
@@ -219,13 +217,12 @@ class BittrexExchange(ExchangePyBase):
         if order.exchange_order_id is not None:
             exchange_order_id = await order.get_exchange_order_id()
             trades_from_exchange = await self._api_get(
-                path_url=CONSTANTS.ALL_TRADES_URL,
+                path_url=CONSTANTS.ORDER_TRADES_URL.format(exchange_order_id),
                 is_auth_required=True,
+                limit_id=CONSTANTS.ORDER_TRADES_LIMIT_ID
             )
             for trade in trades_from_exchange:
-                if trade["orderId"] != exchange_order_id:
-                    continue
-                percent_token = split_hb_trading_pair(order.trading_pair)[-1]
+                percent_token = order.quote_asset
                 fee = TradeFeeBase.new_spot_fee(
                     fee_schema=self.trade_fee_schema(),
                     trade_type=order.trade_type,
@@ -273,16 +270,17 @@ class BittrexExchange(ExchangePyBase):
         async for stream_message in self._iter_user_event_queue():
             try:
                 content = stream_message.get("delta") or stream_message.get("deltas")
-                if isinstance(content, List):
-                    safe_ensure_future(self._process_execution_event(content))
-                elif "marketSymbol" not in content:
+                msg_type = stream_message.get("type")
+                if msg_type == "balance":
                     asset_name = content["currencySymbol"]
                     total_balance = Decimal(content["total"])
                     available_balance = Decimal(content["available"])
                     self._account_available_balances[asset_name] = available_balance
                     self._account_balances[asset_name] = total_balance
-                else:
+                elif msg_type == "order":
                     safe_ensure_future(self._process_order_update_event(content))
+                else:
+                    safe_ensure_future(self._process_execution_event(content))
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -313,7 +311,7 @@ class BittrexExchange(ExchangePyBase):
     async def _process_execution_event(self, events: Dict[str, Any]):
         for execution_event in events:
             order_id = execution_event["orderId"]
-            tracked_order = None
+            tracked_order: InFlightOrder = None
             for order in self._order_tracker.all_fillable_orders.values():
                 if order.exchange_order_id is None:
                     continue
@@ -322,7 +320,7 @@ class BittrexExchange(ExchangePyBase):
                     tracked_order = order
                     break
             if tracked_order is not None:
-                percent_token = split_hb_trading_pair(tracked_order.trading_pair)[-1]
+                percent_token = tracked_order.quote_asset
                 fee = TradeFeeBase.new_spot_fee(
                     fee_schema=self.trade_fee_schema(),
                     trade_type=tracked_order.trade_type,

@@ -77,7 +77,7 @@ class OrderBookTrackerDataSource(metaclass=ABCMeta):
         ws: Optional[WSAssistant] = None
         while True:
             try:
-                ws = await self._connected_websocket_assistant()  # removing type hint as Bittrex does not create WSAssistant objects
+                ws: WSAssistant = await self._connected_websocket_assistant()
                 await self._subscribe_channels(ws)
                 await self._process_websocket_messages(websocket_assistant=ws)
             except asyncio.CancelledError:

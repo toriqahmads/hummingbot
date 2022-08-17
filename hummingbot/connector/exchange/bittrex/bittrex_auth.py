@@ -27,11 +27,10 @@ class BittrexAuth(AuthBase):
         return request  # pass-through
 
     @staticmethod
-    def construct_content_hash(body) -> str:
+    def construct_content_hash(body: str) -> str:
         json_byte = "".encode()
         if body:
             json_byte = body.encode()
-            return hashlib.sha512(json_byte).hexdigest()
         return hashlib.sha512(json_byte).hexdigest()
 
     def generate_REST_auth_params(self, request: RESTRequest) -> Dict[str, Any]:
@@ -49,8 +48,6 @@ class BittrexAuth(AuthBase):
             "Api-Timestamp": timestamp,
             "Api-Content-Hash": content_hash,
             "Api-Signature": signature,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
         }
         return headers
 

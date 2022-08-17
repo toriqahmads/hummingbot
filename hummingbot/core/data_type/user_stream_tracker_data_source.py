@@ -44,8 +44,7 @@ class UserStreamTrackerDataSource(metaclass=ABCMeta):
             try:
                 self._ws_assistant = await self._connected_websocket_assistant()
                 await self._subscribe_channels(websocket_assistant=self._ws_assistant)
-                if isinstance(self._ws_assistant, WSAssistant):  # adding check for connectors with their own WS client
-                    await self._ws_assistant.ping()  # to update last_recv_timestamp
+                await self._ping()  # to update last_recv_timestamp
                 await self._process_websocket_messages(websocket_assistant=self._ws_assistant, queue=output)
             except asyncio.CancelledError:
                 raise
@@ -91,6 +90,9 @@ class UserStreamTrackerDataSource(metaclass=ABCMeta):
         :param delay: number of seconds to sleep
         """
         await asyncio.sleep(delay)
+
+    async def _ping(self):
+        await self._ws_assistant.ping()
 
     def _time(self) -> float:
         return time.time()
