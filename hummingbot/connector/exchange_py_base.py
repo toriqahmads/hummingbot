@@ -300,7 +300,7 @@ class ExchangePyBase(ExchangeBase, ABC):
 
         :return: the id assigned by the connector to the order (the client id)
         """
-        order_id = get_new_client_order_id(
+        order_id = self._get_new_client_order_id(
             is_buy=True,
             trading_pair=trading_pair,
             hbot_order_id_prefix=self.client_order_id_prefix,
@@ -330,7 +330,7 @@ class ExchangePyBase(ExchangeBase, ABC):
         :param price: the order price
         :return: the id assigned by the connector to the order (the client id)
         """
-        order_id = get_new_client_order_id(
+        order_id = self._get_new_client_order_id(
             is_buy=False,
             trading_pair=trading_pair,
             hbot_order_id_prefix=self.client_order_id_prefix,
@@ -1009,6 +1009,9 @@ class ExchangePyBase(ExchangeBase, ABC):
     @abstractmethod
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
         raise NotImplementedError
+
+    def _get_new_client_order_id(self, **kwargs):
+        return get_new_client_order_id(**kwargs)
 
     async def _initialize_trading_pair_symbol_map(self):
         exchange_info = None

@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -143,6 +144,9 @@ class BittrexExchange(ExchangePyBase):
             body.update({
                 "timeInForce": "POST_ONLY_GOOD_TIL_CANCELLED"
             })
+        body.update({
+            "clientOrderId": order_id
+        })
         order_result = await self._api_post(
             path_url=path_url,
             data=body,
@@ -290,20 +294,13 @@ class BittrexExchange(ExchangePyBase):
         order_id = msg["id"]
         update_time = _get_timestamp(msg["updatedAt"])
         order_state = self._get_order_status(msg)
-        tracked_order = None
-        for order in self._order_tracker.all_updatable_orders.values():
-            if order.exchange_order_id is None:
-                continue
-            exchange_order_id = await order.get_exchange_order_id()
-            if exchange_order_id == order_id:
-                tracked_order = order
-                break
+        tracked_order = self._order_tracker.all_updatable_orders.get(msg["clientOrderId"])
         if tracked_order is not None:
             order_update = OrderUpdate(
                 trading_pair=tracked_order.trading_pair,
                 update_timestamp=update_time,
                 new_state=order_state,
-                client_order_id=tracked_order.client_order_id,
+                client_order_id=msg["clientOrderId"],
                 exchange_order_id=order_id,
             )
             self._order_tracker.process_order_update(order_update=order_update)
@@ -361,6 +358,9 @@ class BittrexExchange(ExchangePyBase):
             price=price,
         )
         return fee
+
+    def _get_new_client_order_id(self, **kwargs):
+        return str(uuid.uuid4())
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: List):
         mapping = bidict()
