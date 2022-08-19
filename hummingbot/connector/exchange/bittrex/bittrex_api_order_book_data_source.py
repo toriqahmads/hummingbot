@@ -28,42 +28,10 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         self._api_factory = api_factory
         self.hub = None
 
-    async def _invoke(self, method, args):
-        async with self.LOCK:
-            self.INVOCATION_EVENT = asyncio.Event()
-            self.hub.server.invoke(method, *args)
-            await self.INVOCATION_EVENT.wait()
-            return self.INVOCATION_RESPONSE
-
-    async def _handle_message(self, **msg):
-        if 'R' in msg:
-            self.INVOCATION_RESPONSE = msg['R']
-            self.INVOCATION_EVENT.set()
-
-    async def _handle_error(self, msg):
-        self.logger().exception(msg)
-        raise Exception
-
-    async def _on_orderbook(self, msg):
-        decoded_msg = await _decode_message(msg[0])
-        self._message_queue[self._diff_messages_queue_key].put_nowait(decoded_msg)
-
-    async def _on_trade(self, msg):
-        decoded_msg = await _decode_message(msg[0])
-        self._message_queue[self._trade_messages_queue_key].put_nowait(decoded_msg)
-
     async def get_last_traded_prices(self,
                                      trading_pairs: List[str],
                                      domain: Optional[str] = None) -> Dict[str, float]:
         return await self._connector.get_last_traded_prices(trading_pairs=trading_pairs)
-
-    async def _connected_websocket_assistant(self):
-        ws_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
-        self.hub = ws_connection.register_hub("c3")
-        ws_connection.received += self._handle_message
-        ws_connection.error += self._handle_error
-        ws_connection.start()
-        return ws_connection
 
     async def _request_order_book_snapshot(self, trading_pair: str) -> Dict[str, Any]:
         exchange_symbol = await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
@@ -79,16 +47,6 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             throttler_limit_id=CONSTANTS.ORDERBOOK_SNAPSHOT_LIMIT_ID,
         )
         return data
-
-    async def _order_book_snapshot(self, trading_pair: str) -> OrderBookMessage:
-        snapshot: Dict[str, Any] = await self._request_order_book_snapshot(trading_pair)
-        snapshot_timestamp: float = self._time()
-        snapshot_msg: OrderBookMessage = self.snapshot_message_from_exchange(
-            snapshot,
-            snapshot_timestamp,
-            metadata={"trading_pair": trading_pair}
-        )
-        return snapshot_msg
 
     async def listen_for_subscriptions(self):
         """
@@ -140,16 +98,52 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             )
             raise
 
-    def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
-        """
-        Suppressing function as Bittrex uses signalr connection
-        """
-        pass
+    async def _connected_websocket_assistant(self):
+        ws_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
+        self.hub = ws_connection.register_hub("c3")
+        ws_connection.received += self._handle_message
+        ws_connection.error += self._handle_error
+        ws_connection.start()
+        return ws_connection
+
+    async def _order_book_snapshot(self, trading_pair: str) -> OrderBookMessage:
+        snapshot: Dict[str, Any] = await self._request_order_book_snapshot(trading_pair)
+        snapshot_timestamp: float = self._time()
+        snapshot_msg: OrderBookMessage = self._snapshot_message_from_exchange(
+            snapshot,
+            snapshot_timestamp,
+            metadata={"trading_pair": trading_pair}
+        )
+        return snapshot_msg
+
+    async def _invoke(self, method, args):
+        async with self.LOCK:
+            self.INVOCATION_EVENT = asyncio.Event()
+            self.hub.server.invoke(method, *args)
+            await self.INVOCATION_EVENT.wait()
+            return self.INVOCATION_RESPONSE
+
+    async def _handle_message(self, **msg):
+        if 'R' in msg:
+            self.INVOCATION_RESPONSE = msg['R']
+            self.INVOCATION_EVENT.set()
+
+    async def _handle_error(self, msg):
+        self.logger().exception(msg)
+        raise Exception
+
+    async def _on_orderbook(self, msg):
+        decoded_msg = await _decode_message(msg[0])
+        self._message_queue[self._diff_messages_queue_key].put_nowait(decoded_msg)
+
+    async def _on_trade(self, msg):
+        decoded_msg = await _decode_message(msg[0])
+        self._message_queue[self._trade_messages_queue_key].put_nowait(decoded_msg)
 
     async def _parse_trade_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["marketSymbol"])
         for data in raw_message["deltas"]:
-            trade_message: OrderBookMessage = self.trade_message_from_exchange(
+            trade_message: OrderBookMessage = self._trade_message_from_exchange(
                 msg=data,
                 metadata={"trading_pair": trading_pair, "sequence": raw_message["sequence"]}
             )
@@ -157,15 +151,16 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["marketSymbol"])
-        order_book_message: OrderBookMessage = self.diff_message_from_exchange(msg=raw_message,
-                                                                               timestamp=self._time(),
-                                                                               metadata={"trading_pair": trading_pair}
-                                                                               )
+        order_book_message: OrderBookMessage = self._diff_message_from_exchange(msg=raw_message,
+                                                                                timestamp=self._time(),
+                                                                                metadata={"trading_pair": trading_pair}
+                                                                                )
         message_queue.put_nowait(order_book_message)
 
-    def snapshot_message_from_exchange(self, msg: Dict[str, any],
-                                       timestamp: float,
-                                       metadata: Optional[Dict] = None) -> OrderBookMessage:
+    def _snapshot_message_from_exchange(self,
+                                        msg: Dict[str, any],
+                                        timestamp: float,
+                                        metadata: Optional[Dict] = None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         bids = [(Decimal(bid["rate"]), Decimal(bid["quantity"])) for bid in msg["bid"]]
@@ -177,9 +172,9 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             "asks": asks
         }, timestamp=timestamp)
 
-    def trade_message_from_exchange(self, msg: Dict[str, Any],
-                                    timestamp: Optional[float] = None,
-                                    metadata: Optional[Dict] = None) -> OrderBookMessage:
+    def _trade_message_from_exchange(self,
+                                     msg: Dict[str, Any],
+                                     metadata: Optional[Dict] = None) -> OrderBookMessage:
         if metadata:
             msg.update(metadata)
         return OrderBookMessage(
@@ -191,9 +186,10 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 "amount": msg["quantity"]
             }, timestamp=_get_timestamp(msg["executedAt"]))
 
-    def diff_message_from_exchange(self, msg: Dict[str, any],
-                                   timestamp: Optional[float] = None,
-                                   metadata: Optional[Dict] = None):
+    def _diff_message_from_exchange(self,
+                                    msg: Dict[str, any],
+                                    timestamp: Optional[float] = None,
+                                    metadata: Optional[Dict] = None):
         if metadata:
             msg.update(metadata)
         bids = [(Decimal(bid["rate"]), Decimal(bid["quantity"])) for bid in msg["bidDeltas"]]
@@ -208,3 +204,9 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _on_order_stream_interruption(self, websocket_assistant):
         websocket_assistant and websocket_assistant.close()
+
+    def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
+        """
+        Suppressing function as Bittrex uses signalr connection
+        """
+        pass
