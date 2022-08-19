@@ -31,7 +31,7 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
             return self._last_recv_time
         return 0
 
-    async def invoke(self, method, args):
+    async def _invoke(self, method, args):
         self._last_recv_time = self._time()
         async with self.LOCK:
             self.INVOCATION_EVENT = asyncio.Event()
@@ -42,15 +42,15 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
     async def _connected_websocket_assistant(self):
         websocket_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
         self.hub = websocket_connection.register_hub("c3")
-        websocket_connection.received += self.handle_message
-        websocket_connection.error += self.handle_error
+        websocket_connection.received += self._handle_message
+        websocket_connection.error += self._handle_error
         websocket_connection.start()
         await self.authenticate_client()
         return websocket_connection
 
     async def authenticate_client(self):
         auth_params = self._auth.generate_WS_auth_params()
-        response = await self.invoke('Authenticate', auth_params)
+        response = await self._invoke('Authenticate', auth_params)
         if response['Success']:
             self.logger().info("Successfully authenticated")
         else:
@@ -83,7 +83,7 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
             self.hub.client.on('order', self._on_order)
             self.hub.client.on('balance', self._on_balance)
             channels = ["order", "balance", "execution"]
-            response = await self.invoke('Subscribe', [channels])
+            response = await self._invoke('Subscribe', [channels])
             flag = True
             for i in range(len(channels)):
                 if response[i]['Success']:
@@ -94,19 +94,19 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
             if flag:
                 self.logger().info("Subscribed to private channels")
             else:
-                raise Exception
+                raise Exception("Failed to subscribe to all private channels")
         except asyncio.CancelledError:
             raise
         except Exception:
             self.logger().error("Failed to subscribe to all private channels")
             raise
 
-    async def handle_message(self, **msg):
+    async def _handle_message(self, **msg):
         if 'R' in msg:
             self.INVOCATION_RESPONSE = msg['R']
             self.INVOCATION_EVENT.set()
 
-    async def handle_error(self, msg):
+    async def _handle_error(self, msg):
         self.logger().exception(msg)
         raise Exception
 

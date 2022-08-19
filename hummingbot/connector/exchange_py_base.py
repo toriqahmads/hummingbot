@@ -1010,8 +1010,18 @@ class ExchangePyBase(ExchangeBase, ABC):
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: Dict[str, Any]):
         raise NotImplementedError
 
-    def _get_new_client_order_id(self, **kwargs):
-        return get_new_client_order_id(**kwargs)
+    def _get_new_client_order_id(self,
+                                 is_buy: bool,
+                                 trading_pair: str,
+                                 hbot_order_id_prefix: str,
+                                 max_id_len: int
+                                 ):
+        return get_new_client_order_id(
+            is_buy=is_buy,
+            trading_pair=trading_pair,
+            hbot_order_id_prefix=hbot_order_id_prefix,
+            max_id_len=max_id_len
+        )
 
     async def _initialize_trading_pair_symbol_map(self):
         exchange_info = None

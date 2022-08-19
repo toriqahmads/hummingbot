@@ -359,7 +359,12 @@ class BittrexExchange(ExchangePyBase):
         )
         return fee
 
-    def _get_new_client_order_id(self, **kwargs):
+    def _get_new_client_order_id(self,
+                                 is_buy: bool,
+                                 trading_pair: str,
+                                 hbot_order_id_prefix: str,
+                                 max_id_len: int
+                                 ):
         return str(uuid.uuid4())
 
     def _initialize_trading_pair_symbols_from_exchange_info(self, exchange_info: List):
@@ -379,7 +384,7 @@ class BittrexExchange(ExchangePyBase):
             params=params,
             limit_id=CONSTANTS.SYMBOL_TICKER_LIMIT_ID
         )
-        return resp["lastTradeRate"]
+        return float(resp["lastTradeRate"])
 
     @staticmethod
     def _get_order_status(order):

@@ -1,5 +1,4 @@
 import asyncio
-import time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -29,19 +28,19 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         self._api_factory = api_factory
         self.hub = None
 
-    async def invoke(self, method, args):
+    async def _invoke(self, method, args):
         async with self.LOCK:
             self.INVOCATION_EVENT = asyncio.Event()
             self.hub.server.invoke(method, *args)
             await self.INVOCATION_EVENT.wait()
             return self.INVOCATION_RESPONSE
 
-    async def handle_message(self, **msg):
+    async def _handle_message(self, **msg):
         if 'R' in msg:
             self.INVOCATION_RESPONSE = msg['R']
             self.INVOCATION_EVENT.set()
 
-    async def handle_error(self, msg):
+    async def _handle_error(self, msg):
         self.logger().exception(msg)
         raise Exception
 
@@ -61,8 +60,8 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def _connected_websocket_assistant(self):
         ws_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
         self.hub = ws_connection.register_hub("c3")
-        ws_connection.received += self.handle_message
-        ws_connection.error += self.handle_error
+        ws_connection.received += self._handle_message
+        ws_connection.error += self._handle_error
         ws_connection.start()
         return ws_connection
 
@@ -122,7 +121,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 trade_channel = f"trade_{trading_symbol}"
                 orderbook_channel = f"orderbook_{trading_symbol}_500"
                 subscription_names.extend([trade_channel, orderbook_channel])
-            response = await self.invoke("Subscribe", [subscription_names])
+            response = await self._invoke("Subscribe", [subscription_names])
             flag = True
             for i in range(len(subscription_names)):
                 if not response[i]['Success']:
@@ -131,7 +130,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
             if flag:
                 self.logger().info("Subscribed to public order book and trade channels...")
             else:
-                raise Exception
+                raise Exception("Failed to subscribe to all public channels")
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -158,7 +157,10 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["marketSymbol"])
-        order_book_message: OrderBookMessage = self.diff_message_from_exchange(raw_message, time.time(), {"trading_pair": trading_pair})
+        order_book_message: OrderBookMessage = self.diff_message_from_exchange(msg=raw_message,
+                                                                               timestamp=self._time(),
+                                                                               metadata={"trading_pair": trading_pair}
+                                                                               )
         message_queue.put_nowait(order_book_message)
 
     def snapshot_message_from_exchange(self, msg: Dict[str, any],
@@ -199,7 +201,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         return OrderBookMessage(
             OrderBookMessageType.DIFF, {
                 "trading_pair": msg["trading_pair"],
-                "update_id": int(msg["sequence"]),
+                "update_id": int(timestamp),
                 "bids": bids,
                 "asks": asks
             }, timestamp=timestamp)
