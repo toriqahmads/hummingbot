@@ -1,5 +1,6 @@
 import datetime
 import json
+import time
 from base64 import b64decode
 from decimal import Decimal
 from typing import Any, Dict
@@ -53,7 +54,10 @@ def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
 
 
 def _get_timestamp(transact_info: str):
-    return datetime.datetime.strptime(transact_info, '%Y-%m-%dT%H:%M:%S.%fZ').timestamp()
+    try:
+        return datetime.datetime.strptime(transact_info, '%Y-%m-%dT%H:%M:%S.%fZ').timestamp()
+    except ValueError:
+        return time.time()
 
 
 async def _decode_message(raw_message: bytes) -> Dict[str, Any]:
