@@ -2,7 +2,6 @@ import json
 import re
 from decimal import Decimal
 from typing import Any, Callable, List, Optional, Tuple, Union
-from unittest.mock import patch
 
 from aioresponses import aioresponses
 from aioresponses.core import RequestCall
@@ -13,7 +12,6 @@ from hummingbot.connector.exchange.bittrex import bittrex_constants as CONSTANTS
 from hummingbot.connector.exchange.bittrex.bittrex_exchange import BittrexExchange
 from hummingbot.connector.test_support.exchange_connector_test import AbstractExchangeConnectorTests
 from hummingbot.connector.trading_rule import TradingRule
-from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.core.data_type.common import OrderType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder
 from hummingbot.core.data_type.trade_fee import AddedToCostTradeFee, TokenAmount, TradeFeeBase
@@ -52,8 +50,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
     @property
     def order_creation_url(self):
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_CREATION_URL)
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-        return regex_url
+        return url
 
     @property
     def balance_url(self):
@@ -205,6 +202,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
     @property
     def balance_event_websocket_update(self):
         return {
+            "type": "balance",
             "accountId": "string (uuid)",
             "sequence": "int",
             "delta": {
@@ -221,7 +219,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
 
     @property
     def expected_supported_order_types(self):
-        return [OrderType.LIMIT, OrderType.MARKET]
+        return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
 
     @property
     def expected_trading_rule(self):
@@ -229,9 +227,8 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
         return TradingRule(
             trading_pair=self.trading_pair,
             min_order_size=Decimal(self.trading_rules_request_mock_response[0]["minTradeSize"]),
-            min_price_increment=Decimal(precision),
-            min_base_amount_increment=Decimal(precision),
-            min_notional_size=Decimal(precision)
+            min_price_increment=Decimal(f"1e-{precision}"),
+            min_base_amount_increment=Decimal(f"1e-{precision}"),
         )
 
     @property
@@ -294,7 +291,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
         self.assertIn("Api-Signature", request_headers)
 
     def validate_order_creation_request(self, order: InFlightOrder, request_call: RequestCall):
-        request_data = request_call.kwargs["params"]
+        request_data = json.loads(request_call.kwargs["data"])
         self.assertEqual(self.exchange_symbol_for_tokens(self.base_asset, self.quote_asset),
                          request_data["marketSymbol"])
         self.assertEqual(order.trade_type.name, request_data["direction"])
@@ -305,7 +302,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
 
     def validate_order_cancelation_request(self, order: InFlightOrder, request_call: RequestCall):
         request_data = request_call.kwargs["params"]
-        self.assertEqual(order.exchange_order_id, request_data["id"])
+        self.assertEqual(order.exchange_order_id, request_data["orderId"])
 
     def validate_order_status_request(self, order: InFlightOrder, request_call: RequestCall):
         request_params = request_call.kwargs["params"]
@@ -366,7 +363,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        regex_url = re.compile(url + r"\?.*")
         response = self._order_status_request_completely_filled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return regex_url
@@ -378,7 +375,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
 
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
-        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+        regex_url = re.compile(url + r"\?.*")
         response = self._order_status_request_canceled_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
         return regex_url
@@ -420,7 +417,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(path_url=CONSTANTS.ALL_TRADES_URL)
+        url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_TRADES_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._trade_fills_request_partial_fill_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
@@ -431,7 +428,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(path_url=CONSTANTS.ALL_TRADES_URL)
+        url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_TRADES_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         response = self._trade_fills_request_full_fill_mock_response(order=order)
         mock_api.get(regex_url, body=json.dumps(response), callback=callback)
@@ -442,7 +439,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             order: InFlightOrder,
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
-        url = web_utils.private_rest_url(path_url=CONSTANTS.ALL_TRADES_URL)
+        url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_TRADES_URL.format(order.exchange_order_id))
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
         mock_api.get(regex_url, status=400, callback=callback)
         return regex_url
@@ -474,6 +471,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
 
     def order_event_for_new_order_websocket_update(self, order: InFlightOrder):
         return {
+            "type": "order",
             "accountId": "string (uuid)",
             "sequence": "int",
             "delta": {
@@ -485,13 +483,13 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
                 "limit": "number (double)",
                 "ceiling": "number (double)",
                 "timeInForce": "string",
-                "clientOrderId": "OID1",
+                "clientOrderId": "11",
                 "fillQuantity": 0.0,
                 "commission": "number (double)",
                 "proceeds": "number (double)",
                 "status": "OPEN",
                 "createdAt": "string (date-time)",
-                "updatedAt": "2018-06-29 08:15:27.243860",
+                "updatedAt": "2018-06-29T08:15:27.243860Z",
                 "closedAt": "string (date-time)",
                 "orderToCancel": {
                     "type": "string",
@@ -502,6 +500,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
 
     def order_event_for_canceled_order_websocket_update(self, order: InFlightOrder):
         return {
+            "type": "order",
             "accountId": "string (uuid)",
             "sequence": "int",
             "delta": {
@@ -513,13 +512,13 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
                 "limit": "number (double)",
                 "ceiling": "number (double)",
                 "timeInForce": "string",
-                "clientOrderId": "OID1",
+                "clientOrderId": "11",
                 "fillQuantity": 12.0,
                 "commission": "number (double)",
                 "proceeds": "number (double)",
                 "status": "CLOSED",
                 "createdAt": "string (date-time)",
-                "updatedAt": "2018-06-29 08:15:27.243860",
+                "updatedAt": "2018-06-29T08:15:27.243860Z",
                 "closedAt": "string (date-time)",
                 "orderToCancel": {
                     "type": "string",
@@ -530,10 +529,11 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
 
     def order_event_for_full_fill_websocket_update(self, order: InFlightOrder):
         return {
+            "type": "order",
             "accountId": "string (uuid)",
             "sequence": "int",
             "delta": {
-                "id": "EOID1",
+                "id": "4",
                 "marketSymbol": "COINALPHAHBOT",
                 "direction": "BUY",
                 "type": "LIMIT",
@@ -541,13 +541,13 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
                 "limit": 10000.0,
                 "ceiling": "number (double)",
                 "timeInForce": "string",
-                "clientOrderId": "OID1",
+                "clientOrderId": "11",
                 "fillQuantity": 1.0,
                 "commission": "number (double)",
                 "proceeds": "number (double)",
                 "status": "CLOSED",
                 "createdAt": "string (date-time)",
-                "updatedAt": "2018-06-29 08:15:27.243860",
+                "updatedAt": "2018-06-29T08:15:27.243860Z",
                 "closedAt": "string (date-time)",
                 "orderToCancel": {
                     "type": "string",
@@ -558,54 +558,22 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
 
     def trade_event_for_full_fill_websocket_update(self, order: InFlightOrder):
         return {
+            "type": "trade",
             "accountId": "string (uuid)",
             "sequence": "int",
             "deltas": [
                 {
                     "id": "string (uuid)",
                     "marketSymbol": "COINALPHAHBOT",
-                    "executedAt": "2018-06-29 08:15:27.243860",
+                    "executedAt": "2018-06-29T08:15:27.243860Z",
                     "quantity": 1.0,
                     "rate": 10000.0,
-                    "orderId": "EOID1",
+                    "orderId": "4",
                     "commission": 63.0,
                     "isTaker": True
                 }
             ]
         }
-
-    @patch("hummingbot.connector.utils.get_tracking_nonce_low_res")
-    def test_client_order_id_on_order(self, mocked_nonce):
-        mocked_nonce.return_value = 9
-        result = self.exchange.buy(
-            trading_pair=self.trading_pair,
-            amount=Decimal("1"),
-            order_type=OrderType.LIMIT,
-            price=Decimal("2"),
-        )
-        expected_client_order_id = get_new_client_order_id(
-            is_buy=True,
-            trading_pair=self.trading_pair,
-            hbot_order_id_prefix="",
-            max_id_len=40,
-        )
-
-        self.assertEqual(result, expected_client_order_id)
-
-        result = self.exchange.sell(
-            trading_pair=self.trading_pair,
-            amount=Decimal("1"),
-            order_type=OrderType.LIMIT,
-            price=Decimal("2"),
-        )
-        expected_client_order_id = get_new_client_order_id(
-            is_buy=False,
-            trading_pair=self.trading_pair,
-            hbot_order_id_prefix="",
-            max_id_len=40,
-        )
-
-        self.assertEqual(result, expected_client_order_id)
 
     def _order_cancelation_request_successful_mock_response(self, order: InFlightOrder) -> Any:
         return {

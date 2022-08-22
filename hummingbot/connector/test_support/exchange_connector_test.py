@@ -957,7 +957,7 @@ class AbstractExchangeConnectorTests:
 
             self.exchange.start_tracking_order(
                 order_id="11",
-                exchange_order_id=self.expected_exchange_order_id,
+                exchange_order_id="4",
                 trading_pair=self.trading_pair,
                 order_type=OrderType.LIMIT,
                 trade_type=TradeType.BUY,
@@ -1141,7 +1141,7 @@ class AbstractExchangeConnectorTests:
 
             self.exchange.start_tracking_order(
                 order_id="11",
-                exchange_order_id=self.expected_exchange_order_id,
+                exchange_order_id="4",
                 trading_pair=self.trading_pair,
                 order_type=OrderType.LIMIT,
                 trade_type=TradeType.BUY,
@@ -1195,7 +1195,7 @@ class AbstractExchangeConnectorTests:
 
             self.exchange.start_tracking_order(
                 order_id="11",
-                exchange_order_id=self.expected_exchange_order_id,
+                exchange_order_id="4",
                 trading_pair=self.trading_pair,
                 order_type=OrderType.LIMIT,
                 trade_type=TradeType.BUY,
@@ -1336,7 +1336,7 @@ class AbstractExchangeConnectorTests:
             self.exchange._set_current_timestamp(1640780000)
             self.exchange.start_tracking_order(
                 order_id="11",
-                exchange_order_id="21",
+                exchange_order_id="4",
                 trading_pair=self.trading_pair,
                 order_type=OrderType.LIMIT,
                 trade_type=TradeType.BUY,
@@ -1460,7 +1460,7 @@ class AbstractExchangeConnectorTests:
 
             self.exchange.start_tracking_order(
                 order_id="11",
-                exchange_order_id=self.expected_exchange_order_id,
+                exchange_order_id="4",
                 trading_pair=self.trading_pair,
                 order_type=OrderType.LIMIT,
                 trade_type=TradeType.BUY,
@@ -1644,7 +1644,7 @@ class AbstractExchangeConnectorTests:
             self.exchange._set_current_timestamp(1640780000)
             self.exchange.start_tracking_order(
                 order_id="11",
-                exchange_order_id=self.expected_exchange_order_id,
+                exchange_order_id="4",
                 trading_pair=self.trading_pair,
                 order_type=OrderType.LIMIT,
                 trade_type=TradeType.BUY,
@@ -1682,7 +1682,7 @@ class AbstractExchangeConnectorTests:
             self.exchange._set_current_timestamp(1640780000)
             self.exchange.start_tracking_order(
                 order_id="11",
-                exchange_order_id=self.expected_exchange_order_id,
+                exchange_order_id="4",
                 trading_pair=self.trading_pair,
                 order_type=OrderType.LIMIT,
                 trade_type=TradeType.BUY,

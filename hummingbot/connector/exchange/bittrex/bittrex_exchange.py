@@ -198,7 +198,7 @@ class BittrexExchange(ExchangePyBase):
                                           min_base_amount_increment=Decimal(f"1e-{precision}"),
                                           ))
             except KeyError:
-                self.logger().info(f"Trading-pair {market['symbol']} is not active. Skipping.")
+                self.logger().error(f"Trading-pair {market['symbol']} is not active. Skipping.")
                 continue
             except Exception:
                 self.logger().error(f"Error parsing the trading pair rule {market}. Skipping.", exc_info=True)
