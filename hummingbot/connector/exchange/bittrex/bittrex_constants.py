@@ -1,4 +1,6 @@
 # A SINGLE POINT OF TRUTH FOR BITTREX
+from decimal import Decimal
+
 from hummingbot.core.api_throttler.data_types import RateLimit
 from hummingbot.core.data_type.in_flight_order import OrderState
 
@@ -12,6 +14,10 @@ BITTREX_REST_URL = "https://api.bittrex.com/v3"
 BITTREX_WS_URL = "https://socket-v3.bittrex.com/signalr"
 DEFAULT_DOMAIN = ""
 MAX_CLIENT_ID_LENGTH = 36
+
+# Specifying the rate limit share percentage because Bittrex has stringent
+# rate limiting rules.
+BITTREX_LIMIT_SHARE_PERCENTAGE = Decimal("100")
 
 # WEBSOCKET CHANNEl KEYS
 TRADE_EVENT_KEY = "trade"
