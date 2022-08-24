@@ -55,7 +55,6 @@ class BittrexAPIUserStreamDataSourceTest(unittest.TestCase):
 
     def _unlock_test_with_event(self):
         self.resume_test_event.set()
-        return
 
     def async_run_with_timeout(self, coroutine: Awaitable, timeout: float = 1):
         ret = self.ev_loop.run_until_complete(asyncio.wait_for(coroutine, timeout))
