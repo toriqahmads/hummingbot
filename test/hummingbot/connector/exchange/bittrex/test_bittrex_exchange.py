@@ -301,12 +301,12 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
         self.assertEqual(order.client_order_id, request_data["clientOrderId"])
 
     def validate_order_cancelation_request(self, order: InFlightOrder, request_call: RequestCall):
-        request_data = request_call.kwargs["params"]
-        self.assertEqual(order.exchange_order_id, request_data["orderId"])
+        request_params = request_call.kwargs["params"]
+        self.assertEqual(None, request_params)
 
     def validate_order_status_request(self, order: InFlightOrder, request_call: RequestCall):
         request_params = request_call.kwargs["params"]
-        self.assertEqual(order.exchange_order_id, request_params["orderId"])
+        self.assertEqual(None, request_params)
 
     def validate_trades_request(self, order: InFlightOrder, request_call: RequestCall):
         request_params = request_call.kwargs["params"]
@@ -363,10 +363,9 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
-        regex_url = re.compile(url + r"\?.*")
         response = self._order_status_request_completely_filled_mock_response(order=order)
-        mock_api.get(regex_url, body=json.dumps(response), callback=callback)
-        return regex_url
+        mock_api.get(url, body=json.dumps(response), callback=callback)
+        return url
 
     def configure_canceled_order_status_response(
             self,
@@ -375,10 +374,9 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
 
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
-        regex_url = re.compile(url + r"\?.*")
         response = self._order_status_request_canceled_mock_response(order=order)
-        mock_api.get(regex_url, body=json.dumps(response), callback=callback)
-        return regex_url
+        mock_api.get(url, body=json.dumps(response), callback=callback)
+        return url
 
     def configure_open_order_status_response(
             self,
@@ -386,10 +384,9 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
-        regex_url = re.compile(url + r"\?.*")
         response = self._order_status_request_open_mock_response(order=order)
-        mock_api.get(regex_url, body=json.dumps(response), callback=callback)
-        return regex_url
+        mock_api.get(url, body=json.dumps(response), callback=callback)
+        return url
 
     def configure_http_error_order_status_response(
             self,
@@ -397,9 +394,8 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
-        regex_url = re.compile(url + r"\?.*")
-        mock_api.get(regex_url, status=404, callback=callback)
-        return regex_url
+        mock_api.get(url, status=404, callback=callback)
+        return url
 
     def configure_partially_filled_order_status_response(
             self,
@@ -407,10 +403,9 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
             mock_api: aioresponses,
             callback: Optional[Callable] = lambda *args, **kwargs: None) -> str:
         url = web_utils.private_rest_url(path_url=CONSTANTS.ORDER_DETAIL_URL.format(order.exchange_order_id))
-        regex_url = re.compile(url + r"\?.*")
         response = self._order_status_request_partially_filled_mock_response(order=order)
-        mock_api.get(regex_url, body=json.dumps(response), callback=callback)
-        return regex_url
+        mock_api.get(url, body=json.dumps(response), callback=callback)
+        return url
 
     def configure_partial_fill_trade_response(
             self,

@@ -320,18 +320,18 @@ class BittrexOrderBookDataSourceTest(unittest.TestCase):
 
         self.assertEqual(OrderBookMessageType.DIFF, msg.type)
         self.assertEqual(1658733281.707259, msg.timestamp)
-        self.assertEqual(1658733281, msg.update_id)
+        self.assertEqual(1658733281707, msg.update_id)
 
         bids = msg.bids
         asks = msg.asks
         self.assertEqual(1, len(bids))
         self.assertEqual(4.0, bids[0].price)
         self.assertEqual(431.0, bids[0].amount)
-        self.assertEqual(1658733281, bids[0].update_id)
+        self.assertEqual(1658733281707, bids[0].update_id)
         self.assertEqual(1, len(asks))
         self.assertEqual(7.8, asks[0].price)
         self.assertEqual(12.03, asks[0].amount)
-        self.assertEqual(1658733281, asks[0].update_id)
+        self.assertEqual(1658733281707, asks[0].update_id)
 
     @aioresponses()
     def test_listen_for_order_book_snapshots_cancelled_when_fetching_snapshot(self, mock_api):
