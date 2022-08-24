@@ -108,7 +108,7 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
     async def _handle_error(self, msg):
         self.logger().exception(msg)
-        raise Exception
+        raise Exception(msg)
 
     async def _on_execution(self, msg):
         decoded_msg = await _decode_message(msg[0])
