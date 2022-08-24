@@ -50,10 +50,10 @@ class BittrexAuthTests(TestCase):
     @patch("uuid.uuid4")
     def test_WS_auth_params(self, mock_uuid):
         mock_uuid.return_value = "test"
-        test_content = "1000test"
+        test_content = "1000000test"
         test_signature = hmac.new(self.secret_key.encode(), test_content.encode(), hashlib.sha512).hexdigest()
         ret = self.auth.generate_WS_auth_params()
         self.assertIn(self.api_key, ret)
-        self.assertIn(1000, ret)
+        self.assertIn(str(1000 * 1000), ret)
         self.assertIn("test", ret)
         self.assertIn(test_signature, ret)
