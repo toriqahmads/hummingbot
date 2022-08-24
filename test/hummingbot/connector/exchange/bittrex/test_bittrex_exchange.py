@@ -153,9 +153,8 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
                 "symbol": "string",
                 "baseCurrencySymbol": "string",
                 "quoteCurrencySymbol": "string",
-                "minTradeSize": "number (double)",
                 "precision": "integer (int32)",
-                "status": "string",
+                "status": "ONLINE",
                 "createdAt": "string (date-time)",
                 "notice": "string",
                 "prohibitedIn": [
@@ -234,7 +233,7 @@ class BittrexExchangeTest(AbstractExchangeConnectorTests.ExchangeConnectorTests)
     @property
     def expected_logged_error_for_erroneous_trading_rule(self):
         error_pair = self.trading_rules_request_erroneous_mock_response[0]["symbol"]
-        return f"Trading-pair {error_pair} is not active. Skipping."
+        return f"Error parsing the trading pair rule {error_pair}. Skipping."
 
     @property
     def expected_exchange_order_id(self):

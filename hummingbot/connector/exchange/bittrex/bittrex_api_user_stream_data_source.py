@@ -111,20 +111,18 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
         raise Exception(msg)
 
     async def _on_execution(self, msg):
-        decoded_msg = await _decode_message(msg[0])
-        decoded_msg["type"] = "execution"
-        self._last_recv_time = self._time()
-        await self._process_event_message(event_message=decoded_msg, queue=self._queue)
+        await self._process_message("execution", msg)
 
     async def _on_balance(self, msg):
-        decoded_msg = await _decode_message(msg[0])
-        decoded_msg["type"] = "balance"
-        self._last_recv_time = self._time()
-        await self._process_event_message(event_message=decoded_msg, queue=self._queue)
+        await self._process_message("balance", msg)
 
     async def _on_order(self, msg):
+        await self._process_message("order", msg)
+
+    async def _process_message(self,
+                               event: str, msg):
         decoded_msg = await _decode_message(msg[0])
-        decoded_msg["type"] = "order"
+        decoded_msg["type"] = event
         self._last_recv_time = self._time()
         await self._process_event_message(event_message=decoded_msg, queue=self._queue)
 

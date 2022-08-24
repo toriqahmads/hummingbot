@@ -163,7 +163,7 @@ class BittrexExchange(ExchangePyBase):
 
     async def _format_trading_rules(self, markets: List) -> List[TradingRule]:
         retval = []
-        for market in markets:
+        for market in filter(bittrex_utils.is_exchange_information_valid, markets):
             try:
                 trading_pair = await self.trading_pair_associated_to_exchange_symbol(market.get("symbol"))
                 min_trade_size = market.get("minTradeSize")
@@ -173,11 +173,8 @@ class BittrexExchange(ExchangePyBase):
                                           min_price_increment=Decimal(f"1e-{precision}"),
                                           min_base_amount_increment=Decimal(f"1e-{precision}"),
                                           ))
-            except KeyError:
-                self.logger().error(f"Trading-pair {market['symbol']} is not active. Skipping.")
-                continue
             except Exception:
-                self.logger().error(f"Error parsing the trading pair rule {market}. Skipping.", exc_info=True)
+                self.logger().error(f"Error parsing the trading pair rule {market['symbol']}. Skipping.", exc_info=True)
         return retval
 
     async def _update_balances(self):
