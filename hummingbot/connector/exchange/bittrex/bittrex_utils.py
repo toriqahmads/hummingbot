@@ -9,6 +9,7 @@ from zlib import MAX_WBITS, decompress
 from pydantic import Field, SecretStr
 
 from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
+from hummingbot.connector.exchange.bittrex.bittrex_constants import BITTREX_DATETIME_FORMAT
 from hummingbot.core.data_type.trade_fee import TradeFeeSchema
 
 CENTRALIZED = True
@@ -48,14 +49,12 @@ KEYS = BittrexConfigMap.construct()
 
 
 def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
-    if exchange_info.get("status") == "ONLINE":
-        return True
-    return False
+    return exchange_info.get("status") == "ONLINE"
 
 
 def _get_timestamp(transact_info: str):
     try:
-        return datetime.datetime.strptime(transact_info, '%Y-%m-%dT%H:%M:%S.%fZ').timestamp()
+        return datetime.datetime.strptime(transact_info, BITTREX_DATETIME_FORMAT).timestamp()
     except ValueError:
         return time.time()
 

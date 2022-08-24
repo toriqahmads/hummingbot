@@ -31,23 +31,6 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
             return self._last_recv_time
         return 0
 
-    async def _invoke(self, method, args):
-        self._last_recv_time = self._time()
-        async with self.LOCK:
-            self.INVOCATION_EVENT = asyncio.Event()
-            self.hub.server.invoke(method, *args)
-            await self.INVOCATION_EVENT.wait()
-            return self.INVOCATION_RESPONSE
-
-    async def _connected_websocket_assistant(self):
-        websocket_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
-        self.hub = websocket_connection.register_hub("c3")
-        websocket_connection.received += self._handle_message
-        websocket_connection.error += self._handle_error
-        websocket_connection.start()
-        await self.authenticate_client()
-        return websocket_connection
-
     async def authenticate_client(self):
         auth_params = self._auth.generate_WS_auth_params()
         response = await self._invoke('Authenticate', auth_params)
@@ -100,6 +83,23 @@ class BittrexAPIUserStreamDataSource(UserStreamTrackerDataSource):
         except Exception:
             self.logger().error("Failed to subscribe to all private channels")
             raise
+
+    async def _connected_websocket_assistant(self):
+        websocket_connection = signalr_aio.Connection(CONSTANTS.BITTREX_WS_URL, session=None)
+        self.hub = websocket_connection.register_hub("c3")
+        websocket_connection.received += self._handle_message
+        websocket_connection.error += self._handle_error
+        websocket_connection.start()
+        await self.authenticate_client()
+        return websocket_connection
+
+    async def _invoke(self, method, args):
+        async with self.LOCK:
+            self.INVOCATION_EVENT = asyncio.Event()
+            self.hub.server.invoke(method, *args)
+            await self.INVOCATION_EVENT.wait()
+            self._last_recv_time = self._time()
+            return self.INVOCATION_RESPONSE
 
     async def _handle_message(self, **msg):
         if 'R' in msg:

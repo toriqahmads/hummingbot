@@ -188,7 +188,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     def _diff_message_from_exchange(self,
                                     msg: Dict[str, any],
-                                    timestamp: Optional[float] = None,
+                                    timestamp: float,
                                     metadata: Optional[Dict] = None):
         if metadata:
             msg.update(metadata)
@@ -197,7 +197,7 @@ class BittrexAPIOrderBookDataSource(OrderBookTrackerDataSource):
         return OrderBookMessage(
             OrderBookMessageType.DIFF, {
                 "trading_pair": msg["trading_pair"],
-                "update_id": int(timestamp),
+                "update_id": int(timestamp * 1000),
                 "bids": bids,
                 "asks": asks
             }, timestamp=timestamp)

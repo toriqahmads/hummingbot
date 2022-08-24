@@ -135,6 +135,7 @@ class BittrexExchange(ExchangePyBase):
             "type": "LIMIT",
             "quantity": f"{amount:f}",
             "limit": f"{price:f}",
+            "clientOrderId": order_id
         }
         if order_type is OrderType.LIMIT:
             body.update({
@@ -144,9 +145,6 @@ class BittrexExchange(ExchangePyBase):
             body.update({
                 "timeInForce": "POST_ONLY_GOOD_TIL_CANCELLED"
             })
-        body.update({
-            "clientOrderId": order_id
-        })
         order_result = await self._api_post(
             path_url=path_url,
             data=body,
@@ -157,33 +155,11 @@ class BittrexExchange(ExchangePyBase):
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
         exchange_id = await tracked_order.get_exchange_order_id()
-        api_params = {
-            "orderId": exchange_id
-        }
         cancel_result = await self._api_delete(
             path_url=CONSTANTS.ORDER_DETAIL_URL.format(exchange_id),
-            params=api_params,
             is_auth_required=True,
             limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID)
-        if cancel_result["status"] == "CLOSED":
-            return True
-        return False
-
-    async def _update_balances(self):
-        local_asset_names = set(self._account_balances.keys())
-        remote_asset_names = set()
-        account_balances = await self._api_get(path_url=CONSTANTS.BALANCES_URL, is_auth_required=True)
-        for balance_entry in account_balances:
-            asset_name = balance_entry["currencySymbol"]
-            available_balance = Decimal(balance_entry["available"])
-            total_balance = Decimal(balance_entry["total"])
-            self._account_available_balances[asset_name] = available_balance
-            self._account_balances[asset_name] = total_balance
-            remote_asset_names.add(asset_name)
-        asset_names_to_remove = local_asset_names.difference(remote_asset_names)
-        for asset_name in asset_names_to_remove:
-            del self._account_available_balances[asset_name]
-            del self._account_balances[asset_name]
+        return cancel_result["status"] == "CLOSED"
 
     async def _format_trading_rules(self, markets: List) -> List[TradingRule]:
         retval = []
@@ -204,6 +180,22 @@ class BittrexExchange(ExchangePyBase):
                 self.logger().error(f"Error parsing the trading pair rule {market}. Skipping.", exc_info=True)
         return retval
 
+    async def _update_balances(self):
+        local_asset_names = set(self._account_balances.keys())
+        remote_asset_names = set()
+        account_balances = await self._api_get(path_url=CONSTANTS.BALANCES_URL, is_auth_required=True)
+        for balance_entry in account_balances:
+            asset_name = balance_entry["currencySymbol"]
+            available_balance = Decimal(balance_entry["available"])
+            total_balance = Decimal(balance_entry["total"])
+            self._account_available_balances[asset_name] = available_balance
+            self._account_balances[asset_name] = total_balance
+            remote_asset_names.add(asset_name)
+        asset_names_to_remove = local_asset_names.difference(remote_asset_names)
+        for asset_name in asset_names_to_remove:
+            del self._account_available_balances[asset_name]
+            del self._account_balances[asset_name]
+
     async def _update_trading_fees(self):
         resp = await self._api_get(
             path_url=CONSTANTS.FEES_URL,
@@ -219,7 +211,7 @@ class BittrexExchange(ExchangePyBase):
     async def _all_trade_updates_for_order(self, order: InFlightOrder) -> List[TradeUpdate]:
         trade_updates = []
         if order.exchange_order_id is not None:
-            exchange_order_id = await order.get_exchange_order_id()
+            exchange_order_id = order.exchange_order_id
             trades_from_exchange = await self._api_get(
                 path_url=CONSTANTS.ORDER_TRADES_URL.format(exchange_order_id),
                 is_auth_required=True,
@@ -250,12 +242,8 @@ class BittrexExchange(ExchangePyBase):
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
         exchange_order_id = await tracked_order.get_exchange_order_id()
-        params = {
-            "orderId": exchange_order_id
-        }
         order_update = await self._api_get(
             path_url=CONSTANTS.ORDER_DETAIL_URL.format(exchange_order_id),
-            params=params,
             is_auth_required=True,
             limit_id=CONSTANTS.ORDER_DETAIL_LIMIT_ID
         )
@@ -310,10 +298,7 @@ class BittrexExchange(ExchangePyBase):
             order_id = execution_event["orderId"]
             tracked_order: InFlightOrder = None
             for order in self._order_tracker.all_fillable_orders.values():
-                if order.exchange_order_id is None:
-                    continue
-                exchange_order_id = await order.get_exchange_order_id()
-                if exchange_order_id == order_id:
+                if order.exchange_order_id == order_id:
                     tracked_order = order
                     break
             if tracked_order is not None:
@@ -376,12 +361,8 @@ class BittrexExchange(ExchangePyBase):
 
     async def _get_last_traded_price(self, trading_pair: str) -> float:
         exchange_symbol = await self.exchange_symbol_associated_to_pair(trading_pair=trading_pair)
-        params = {
-            "marketSymbol": exchange_symbol
-        }
         resp = await self._api_get(
             path_url=CONSTANTS.SYMBOL_TICKER_PATH.format(exchange_symbol),
-            params=params,
             limit_id=CONSTANTS.SYMBOL_TICKER_LIMIT_ID
         )
         return float(resp["lastTradeRate"])
