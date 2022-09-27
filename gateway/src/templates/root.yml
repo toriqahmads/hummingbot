@@ -20,6 +20,10 @@ configurations:
     configurationPath: ethereum.yml
     schemaPath: ethereum-schema.json
 
+  $namespace cronos:
+      configurationPath: cronos.yml
+      schemaPath: ethereum-schema.json
+
   $namespace polygon:
     configurationPath: polygon.yml
     schemaPath: ethereum-schema.json

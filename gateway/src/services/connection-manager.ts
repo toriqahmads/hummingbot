@@ -16,6 +16,7 @@ import {
   Uniswapish,
   UniswapLPish,
 } from './common-interfaces';
+import { Cronos } from '../chains/cronos/cronos';
 import { Traderjoe } from '../connectors/traderjoe/traderjoe';
 import { Sushiswap } from '../connectors/sushiswap/sushiswap';
 import { Defikingdoms } from '../connectors/defikingdoms/defikingdoms';
@@ -39,6 +40,7 @@ export async function getChain<T>(
   if (chain === 'ethereum') chainInstance = Ethereum.getInstance(network);
   else if (chain === 'avalanche')
     chainInstance = Avalanche.getInstance(network);
+  else if (chain === 'cronos') chainInstance = Cronos.getInstance(network);
   else if (chain === 'polygon') chainInstance = Polygon.getInstance(network);
   else if (chain === 'harmony') chainInstance = Harmony.getInstance(network);
   else if (chain === 'solana')

@@ -12,6 +12,7 @@ module.exports = {
     'src/chains/ethereum/uniswap/uniswap.ts',
     'src/chains/avalanche/avalanche.ts',
     'src/chains/avalanche/pangolin/pangolin.ts',
+    'src/chains/cronos/cronos.ts',
     'conf/migration/migrations.js',
     'src/chains/solana/solana.ts',
     'src/connectors/uniswap/uniswap.config.ts',

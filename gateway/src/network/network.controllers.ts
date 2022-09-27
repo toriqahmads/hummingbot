@@ -16,6 +16,7 @@ import {
   UNKNOWN_KNOWN_CHAIN_ERROR_MESSAGE,
 } from '../services/error-handler';
 import { EthereumBase } from '../services/ethereum-base';
+import { Cronos } from '../chains/cronos/cronos';
 
 export async function getStatus(
   req: StatusRequest
@@ -35,6 +36,8 @@ export async function getStatus(
       connections.push(Harmony.getInstance(req.network as string));
     } else if (req.chain === 'ethereum') {
       connections.push(Ethereum.getInstance(req.network as string));
+    } else if (req.chain === 'cronos') {
+      connections.push(Cronos.getInstance(req.network as string));
     } else if (req.chain === 'polygon') {
       connections.push(Polygon.getInstance(req.network as string));
     } else if (req.chain === 'solana') {
@@ -60,6 +63,11 @@ export async function getStatus(
     const ethereumConnections = Ethereum.getConnectedInstances();
     connections = connections.concat(
       ethereumConnections ? Object.values(ethereumConnections) : []
+    );
+
+    const cronosConnections = Cronos.getConnectedInstances();
+    connections = connections.concat(
+      cronosConnections ? Object.values(cronosConnections) : []
     );
 
     const polygonConnections = Polygon.getConnectedInstances();
@@ -111,6 +119,8 @@ export async function getTokens(req: TokensRequest): Promise<TokensResponse> {
       connection = Harmony.getInstance(req.network);
     } else if (req.chain === 'ethereum') {
       connection = Ethereum.getInstance(req.network);
+    } else if (req.chain === 'cronos') {
+      connection = Cronos.getInstance(req.network);
     } else if (req.chain === 'polygon') {
       connection = Polygon.getInstance(req.network);
     } else if (req.chain === 'solana') {
