@@ -225,6 +225,13 @@ class TokocryptoExchange(ExchangePyBase):
         return (o_id, transact_time)
 
     async def _place_cancel(self, order_id: str, tracked_order: InFlightOrder):
+        # check if order is can be converted to int
+        # if it's not, mean it still don't have exchange order id
+        # so will automatically return True
+        # then update order and remove from hummingbot in_db order
+        if not order_id.isnumeric():
+            return True
+
         # symbol = self.tokocrypto_exchange_symbol_associated_to_pair(trading_pair=tracked_order.trading_pair)
         api_params = {
             # "symbol": symbol,
@@ -238,9 +245,26 @@ class TokocryptoExchange(ExchangePyBase):
             use_private=True)
         # self.logger().info(f"place order cancel {cancel_result}")
         if "data" not in cancel_result:
+            # trading_pair = self.tokocrypto_exchange_symbol_associated_to_pair(trading_pair=tracked_order.trading_pair)
+            # updated_order_data = await self._api_get(
+            #     path_url=CONSTANTS.ORDER_PATH_URL,
+            #     params={
+            #         "symbol": trading_pair,
+            #         "orderId": tracked_order.exchange_order_id,
+            #         "clientId": tracked_order.client_order_id},
+            #     is_auth_required=True)
+            # self.logger().info(f"order after cancel fail 249 {updated_order_data}")
+            # self.logger().info(f"in_flight_orders order {self.in_flight_orders}")
+            # order_update = await self._request_order_status(tracked_order=tracked_order)
+            # if tracked_order.client_order_id in self.in_flight_orders:
+            # self.logger().info(f"update tracked order {tracked_order}")
+            # self._order_tracker.process_order_update(order_update)
+            await self._update_order_status()
+
             return False
         else:
-            if int(cancel_result["data"]["status"]) == CONSTANTS.ORDER_STATE[3]:
+            # self.logger().info(f"state 252 {int(cancel_result['data']['status'])} {CONSTANTS.ORDER_STATE[3]} {CONSTANTS.ORDER_STATE[int(cancel_result['data']['status'])]}")
+            if CONSTANTS.ORDER_STATE[int(cancel_result["data"]["status"])] == CONSTANTS.ORDER_STATE[3]:
                 return True
             return False
 
@@ -314,6 +338,7 @@ class TokocryptoExchange(ExchangePyBase):
         """
         async for event_message in self._iter_user_event_queue():
             try:
+                # self.logger().info(f"event message 326 {event_message}")
                 event_type = event_message.get("e")
                 # Refer to https://github.com/binance-exchange/binance-official-api-docs/blob/master/user-data-stream.md
                 # As per the order update section in Tokocrypto the ID of the order being canceled is under the "C" key
@@ -351,7 +376,7 @@ class TokocryptoExchange(ExchangePyBase):
                         order_update = OrderUpdate(
                             trading_pair=tracked_order.trading_pair,
                             update_timestamp=event_message["E"] * 1e-3,
-                            new_state=CONSTANTS.ORDER_STATE[event_message["X"]],
+                            new_state=CONSTANTS.ORDER_STATE_2[event_message["X"]],
                             client_order_id=client_order_id,
                             exchange_order_id=str(event_message["i"]),
                         )
@@ -519,7 +544,7 @@ class TokocryptoExchange(ExchangePyBase):
 
         # self.logger().info(f"update order status 517 {updated_order_data}")
 
-        new_state = CONSTANTS.ORDER_STATE[updated_order_data["data"]["status"]]
+        new_state = CONSTANTS.ORDER_STATE[int(updated_order_data["data"]["status"])]
 
         order_update = OrderUpdate(
             client_order_id=tracked_order.client_order_id,

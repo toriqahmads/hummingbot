@@ -68,16 +68,16 @@ ORDER_STATE = {
     5: OrderState.FAILED,
     6: OrderState.FAILED,
 }
-# ORDER_STATE = {
-#     "PENDING": OrderState.PENDING_CREATE,
-#     "NEW": OrderState.OPEN,
-#     "FILLED": OrderState.FILLED,
-#     "PARTIALLY_FILLED": OrderState.PARTIALLY_FILLED,
-#     "PENDING_CANCEL": OrderState.OPEN,
-#     "CANCELED": OrderState.CANCELED,
-#     "REJECTED": OrderState.FAILED,
-#     "EXPIRED": OrderState.FAILED,
-# }
+ORDER_STATE_2 = {
+    "PENDING": ORDER_STATE[-2],
+    "NEW": ORDER_STATE[0],
+    "FILLED": ORDER_STATE[2],
+    "PARTIALLY_FILLED": ORDER_STATE[1],
+    "PENDING_CANCEL": ORDER_STATE[4],
+    "CANCELED": ORDER_STATE[3],
+    "REJECTED": ORDER_STATE[5],
+    "EXPIRED": ORDER_STATE[6],
+}
 
 # Websocket event types
 DIFF_EVENT_TYPE = "depthUpdate"
