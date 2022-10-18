@@ -443,14 +443,14 @@ class GlobalTokenConfigMap(BaseClientModel):
         default="USD",
         client_data=ClientFieldData(
             prompt=lambda
-                cm: "What is your default display token? (e.g. USD,EUR,BTC)",
+                cm: "What is your default display token? (e.g. USD,EUR,BTC,BIDR)",
         ),
     )
     global_token_symbol: str = Field(
         default="$",
         client_data=ClientFieldData(
             prompt=lambda
-                cm: "What is your default display token symbol? (e.g. $,€)",
+                cm: "What is your default display token symbol? (e.g. $,€,Rp)",
         ),
     )
 
@@ -656,11 +656,23 @@ class KuCoinRateSourceMode(ExchangeRateSourceModeBase):
         title = "kucoin"
 
 
+class TokocryptoRateSourceMode(ExchangeRateSourceModeBase):
+    name: str = Field(
+        default="tokocrypto",
+        const=True,
+        client_data=None,
+    )
+
+    class Config:
+        title = "tokocrypto"
+
+
 RATE_SOURCE_MODES = {
     AscendExRateSourceMode.Config.title: AscendExRateSourceMode,
     BinanceRateSourceMode.Config.title: BinanceRateSourceMode,
     CoinGeckoRateSourceMode.Config.title: CoinGeckoRateSourceMode,
     KuCoinRateSourceMode.Config.title: KuCoinRateSourceMode,
+    TokocryptoRateSourceMode.Config.title: TokocryptoRateSourceMode,
 }
 
 
