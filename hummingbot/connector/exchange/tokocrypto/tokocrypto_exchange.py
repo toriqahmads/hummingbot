@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from bidict import bidict
 
-from hummingbot.connector.constants import s_decimal_NaN
+from hummingbot.connector.constants import s_decimal_0, s_decimal_NaN
 from hummingbot.connector.exchange.tokocrypto import (
     tokocrypto_constants as CONSTANTS,
     tokocrypto_utils,
@@ -190,6 +190,101 @@ class TokocryptoExchange(ExchangePyBase):
         is_maker = order_type is OrderType.LIMIT_MAKER
         return DeductedFromReturnsTradeFee(percent=self.estimate_fee_pct(is_maker))
 
+    async def _create_order(self,
+                            trade_type: TradeType,
+                            order_id: str,
+                            trading_pair: str,
+                            amount: Decimal,
+                            order_type: OrderType,
+                            price: Optional[Decimal] = None,
+                            **kwargs):
+        """
+        Creates an order in the exchange using the parameters to configure it
+
+        :param trade_type: the side of the order (BUY of SELL)
+        :param order_id: the id that should be assigned to the order (the client id)
+        :param trading_pair: the token pair to operate with
+        :param amount: the order amount
+        :param order_type: the type of order to create (MARKET, LIMIT, LIMIT_MAKER)
+        :param price: the order price
+        """
+        exchange_order_id = ""
+        trading_rule = self._trading_rules[trading_pair]
+
+        if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER]:
+            price = self.quantize_order_price(trading_pair, price)
+            quantize_amount_price = Decimal("0") if price.is_nan() else price
+            amount = self.quantize_order_amount(trading_pair=trading_pair, amount=amount, price=quantize_amount_price)
+        else:
+            amount = self.quantize_order_amount(trading_pair=trading_pair, amount=amount)
+
+        self.start_tracking_order(
+            order_id=order_id,
+            exchange_order_id=None,
+            trading_pair=trading_pair,
+            order_type=order_type,
+            trade_type=trade_type,
+            price=price,
+            amount=amount,
+            **kwargs,
+        )
+
+        if order_type not in self.supported_order_types():
+            self.logger().error(f"{order_type} is not in the list of supported order types")
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+            return
+
+        if amount < trading_rule.min_order_size:
+            self.logger().warning(f"{trade_type.name.title()} order amount {amount} is lower than the minimum order"
+                                  f" size {trading_rule.min_order_size}. The order will not be created.")
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+            return
+        if price is not None and amount * price < trading_rule.min_notional_size:
+            self.logger().warning(f"{trade_type.name.title()} order notional {amount * price} is lower than the "
+                                  f"minimum notional size {trading_rule.min_notional_size}. "
+                                  "The order will not be created.")
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+            return
+        plus_one_percent_notional_size = trading_rule.min_notional_size * Decimal("1.01")
+        if price is not None and amount * price < plus_one_percent_notional_size:
+            self.logger().warning(f"{trade_type.name.title()} order notional {amount * price} is lower than the "
+                                  f"minimum notional size + 1% {plus_one_percent_notional_size}. "
+                                  "The order will not be created.")
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+            return
+
+        try:
+            exchange_order_id, update_timestamp = await self._place_order(
+                order_id=order_id,
+                trading_pair=trading_pair,
+                amount=amount,
+                trade_type=trade_type,
+                order_type=order_type,
+                price=price,
+                **kwargs,
+            )
+
+            order_update: OrderUpdate = OrderUpdate(
+                client_order_id=order_id,
+                exchange_order_id=exchange_order_id,
+                trading_pair=trading_pair,
+                update_timestamp=update_timestamp,
+                new_state=OrderState.OPEN,
+            )
+            self._order_tracker.process_order_update(order_update)
+
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.logger().network(
+                f"Error submitting {trade_type.name.lower()} {order_type.name.upper()} order to {self.name_cap} for "
+                f"{amount} {trading_pair} {price}.",
+                exc_info=True,
+                app_warning_msg=f"Failed to submit buy order to {self.name_cap}. Check API key and network connection."
+            )
+            self._update_order_after_failure(order_id=order_id, trading_pair=trading_pair)
+        return order_id, exchange_order_id
+
     async def _place_order(self,
                            order_id: str,
                            trading_pair: str,
@@ -219,7 +314,7 @@ class TokocryptoExchange(ExchangePyBase):
             headers=self.authenticator.header_for_authentication(),
             is_auth_required=False,
             use_private=True)
-        # self.logger().info(f"place order {order_result}")
+
         o_id = str(order_result["data"]["orderId"])
         transact_time = order_result["data"]["createTime"] * 1e-3
         return (o_id, transact_time)
@@ -259,7 +354,7 @@ class TokocryptoExchange(ExchangePyBase):
             # if tracked_order.client_order_id in self.in_flight_orders:
             # self.logger().info(f"update tracked order {tracked_order}")
             # self._order_tracker.process_order_update(order_update)
-            await self._update_order_status()
+            await self._status_polling_loop_fetch_updates()
 
             return False
         else:
@@ -507,7 +602,7 @@ class TokocryptoExchange(ExchangePyBase):
                 },
                 is_auth_required=True,
                 limit_id=CONSTANTS.MY_TRADES_PATH_URL)
-            # self.logger().info(f"all order 483 {all_fills_response}")
+
             for trade in all_fills_response["data"]["list"]:
                 exchange_order_id = str(trade["orderId"])
                 fee = TradeFeeBase.new_spot_fee(
@@ -516,7 +611,7 @@ class TokocryptoExchange(ExchangePyBase):
                     percent_token=trade["commissionAsset"],
                     flat_fees=[TokenAmount(amount=Decimal(trade["commission"]), token=trade["commissionAsset"])]
                 )
-                # self.logger().info(f"trade time: {trade['time']}")
+
                 trade_update = TradeUpdate(
                     trade_id=str(trade["tradeId"]),
                     client_order_id=order.client_order_id,
@@ -542,8 +637,6 @@ class TokocryptoExchange(ExchangePyBase):
                 "clientId": tracked_order.client_order_id},
             is_auth_required=True)
 
-        # self.logger().info(f"update order status 517 {updated_order_data}")
-
         new_state = CONSTANTS.ORDER_STATE[int(updated_order_data["data"]["status"])]
 
         order_update = OrderUpdate(
@@ -563,6 +656,9 @@ class TokocryptoExchange(ExchangePyBase):
         account_info = await self._api_get(
             path_url=CONSTANTS.ACCOUNTS_PATH_URL,
             is_auth_required=True)
+
+        if ("data" not in account_info):
+            raise Exception(account_info['msg'])
 
         balances = account_info["data"]["accountAssets"]
         for balance_entry in balances:
@@ -696,3 +792,16 @@ class TokocryptoExchange(ExchangePyBase):
         except Exception:
             self.logger().error(
                 f"Failed to cancel order {order.client_order_id}({order.exchange_order_id})", exc_info=True)
+
+    def quantize_order_amount(self, trading_pair: str, amount: Decimal, price: Decimal = s_decimal_0) -> Decimal:
+        """
+        Applies the trading rules to calculate the correct order amount for the market
+
+        :param trading_pair: the token pair for which the order will be created
+        :param amount: the intended amount for the order
+        :param price: the intended price for the order
+
+        :return: the quantized order amount after applying the trading rules
+        """
+        quantized_amount: Decimal = super(ExchangePyBase, self).quantize_order_amount(trading_pair, amount)
+        return quantized_amount
