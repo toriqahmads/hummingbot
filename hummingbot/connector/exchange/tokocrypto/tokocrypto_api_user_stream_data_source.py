@@ -83,15 +83,14 @@ class TokocryptoAPIUserStreamDataSource(UserStreamTrackerDataSource):
         try:
             data = await rest_assistant.execute_request(
                 url=web_utils.private_rest_url(path_url=CONSTANTS.TOKOCRYPTO_USER_STREAM_PATH_URL, domain=self._domain),
-                params={"listenKey": self._current_listen_key},
                 method=RESTMethod.PUT,
                 return_err=True,
                 throttler_limit_id=CONSTANTS.TOKOCRYPTO_USER_STREAM_PATH_URL,
                 headers=self._auth.header_for_authentication(),
-                data=self._auth.add_auth_to_params(dict())
+                data=self._auth.add_auth_to_params(dict({"listenKey": self._current_listen_key}))
             )
 
-            if "code" in data:
+            if data["msg"] != "Success":
                 self.logger().warning(f"Failed to refresh the listen key {self._current_listen_key}: {data}")
                 return False
 
