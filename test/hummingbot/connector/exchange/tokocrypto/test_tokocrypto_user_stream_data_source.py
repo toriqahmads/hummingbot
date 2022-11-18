@@ -172,7 +172,11 @@ class TokocryptoUserStreamDataSourceUnitTests(unittest.TestCase):
     def test_ping_listen_key_successful(self, mock_api):
         url = web_utils.private_rest_url(path_url=CONSTANTS.TOKOCRYPTO_USER_STREAM_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
-        mock_api.put(regex_url, body=json.dumps({}))
+        mock_api.put(regex_url, body=json.dumps({
+            "code": 0,
+            "msg": "Success",
+            "timestamp": 1668759055073
+        }))
 
         self.data_source._current_listen_key = self.listen_key
         result: bool = self.async_run_with_timeout(self.data_source._ping_listen_key())

@@ -1117,6 +1117,47 @@ class TokocryptoExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTe
 
         self.assertEqual(result, expected_client_order_id)
 
+    @aioresponses()
+    def test_create_order_fails_when_trading_rule_error_and_raises_failure_event(self, mock_api):
+        self._simulate_trading_rules_initialized()
+        request_sent_event = asyncio.Event()
+        self.exchange._set_current_timestamp(1640780000)
+
+        url = self.order_creation_url
+        mock_api.post(url, status=400, callback=lambda *args, **kwargs: request_sent_event.set())
+
+        order_id_for_invalid_order = self.place_buy_order(
+            amount=Decimal("0.0001"), price=Decimal("0.0000001")
+        )
+        # The second order is used only to have the event triggered and avoid using timeouts for tests
+        order_id = self.place_buy_order()
+        self.async_run_with_timeout(request_sent_event.wait())
+
+        self.assertNotIn(order_id_for_invalid_order, self.exchange.in_flight_orders)
+        self.assertNotIn(order_id, self.exchange.in_flight_orders)
+
+        self.assertEquals(0, len(self.buy_order_created_logger.event_log))
+        failure_event: MarketOrderFailureEvent = self.order_failure_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, failure_event.timestamp)
+        self.assertEqual(OrderType.LIMIT, failure_event.order_type)
+        self.assertEqual(order_id_for_invalid_order, failure_event.order_id)
+
+        log = "Buy order amount {} is lower than the minimum order size 0.01. The order will not be created.".format(self.exchange.quantize_order_amount(self.trading_pair, Decimal('0.0001')))
+        self.assertTrue(
+            self.is_logged(
+                "WARNING",
+                log
+            )
+        )
+        self.assertTrue(
+            self.is_logged(
+                "INFO",
+                f"Order {order_id} has failed. Order Update: OrderUpdate(trading_pair='{self.trading_pair}', "
+                f"update_timestamp={self.exchange.current_timestamp}, new_state={repr(OrderState.FAILED)}, "
+                f"client_order_id='{order_id}', exchange_order_id=None, misc_updates=None)"
+            )
+        )
+
     def test_time_synchronizer_related_request_error_detection(self):
         exception = IOError("Error executing request POST https://www.tokocrypto.com/open/v1/order. HTTP status is 400. "
                             "Error: {'code':-1021,'msg':'Timestamp for this request is outside of the recvWindow.'}")
