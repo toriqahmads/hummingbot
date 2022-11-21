@@ -633,13 +633,21 @@ class TokocryptoExchange(ExchangePyBase):
 
     async def _request_order_status(self, tracked_order: InFlightOrder) -> OrderUpdate:
         trading_pair = self.tokocrypto_exchange_symbol_associated_to_pair(trading_pair=tracked_order.trading_pair)
+        params = {
+            "symbol": trading_pair,
+            "clientId": tracked_order.client_order_id
+        }
+
+        if tracked_order.exchange_order_id is not None:
+            params["orderId"] = tracked_order.exchange_order_id
+
         updated_order_data = await self._api_get(
             path_url=CONSTANTS.ORDER_PATH_URL,
-            params={
-                "symbol": trading_pair,
-                "orderId": tracked_order.exchange_order_id,
-                "clientId": tracked_order.client_order_id},
+            params=params,
             is_auth_required=True)
+
+        if "data" not in updated_order_data:
+            raise Exception(updated_order_data["msg"])
 
         new_state = CONSTANTS.ORDER_STATE[int(updated_order_data["data"]["status"])]
 
