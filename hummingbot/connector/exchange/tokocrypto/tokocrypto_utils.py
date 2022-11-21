@@ -16,6 +16,17 @@ DEFAULT_FEES = TradeFeeSchema(
 )
 
 
+def get_flight_order_key_from_value(dicts: Dict, key_name: str, val: any):
+    key = None
+    for dic_key in dicts:
+        if dicts[dic_key] is not None:
+            order = dicts[dic_key].to_json()
+            if order[key_name] is not None:
+                if order[key_name] == val:
+                    key = dic_key
+    return key
+
+
 def is_exchange_information_valid(exchange_info: Dict[str, Any]) -> bool:
     """
     Verifies if a trading pair is enabled to operate with based on its exchange information

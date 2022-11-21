@@ -440,42 +440,46 @@ class TokocryptoExchange(ExchangePyBase):
                 if event_type == "executionReport":
                     execution_type = event_message.get("x")
                     if execution_type != "CANCELED":
-                        client_order_id = event_message.get("c")
+                        exchange_order_id = event_message.get("c")
                     else:
-                        client_order_id = event_message.get("C")
+                        exchange_order_id = event_message.get("C")
 
                     if execution_type == "TRADE":
-                        tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
-                        if tracked_order is not None:
-                            fee = TradeFeeBase.new_spot_fee(
-                                fee_schema=self.trade_fee_schema(),
-                                trade_type=tracked_order.trade_type,
-                                percent_token=event_message["N"],
-                                flat_fees=[TokenAmount(amount=Decimal(event_message["n"]), token=event_message["N"])]
-                            )
-                            trade_update = TradeUpdate(
-                                trade_id=str(event_message["t"]),
-                                client_order_id=client_order_id,
-                                exchange_order_id=str(event_message["i"]),
-                                trading_pair=tracked_order.trading_pair,
-                                fee=fee,
-                                fill_base_amount=Decimal(event_message["l"]),
-                                fill_quote_amount=Decimal(event_message["l"]) * Decimal(event_message["L"]),
-                                fill_price=Decimal(event_message["L"]),
-                                fill_timestamp=event_message["T"] * 1e-3,
-                            )
-                            self._order_tracker.process_trade_update(trade_update)
+                        client_order_id = tokocrypto_utils.get_flight_order_key_from_value(self._order_tracker.all_fillable_orders, "exchange_order_id", exchange_order_id)
+                        if client_order_id is not None:
+                            tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
+                            if tracked_order is not None:
+                                fee = TradeFeeBase.new_spot_fee(
+                                    fee_schema=self.trade_fee_schema(),
+                                    trade_type=tracked_order.trade_type,
+                                    percent_token=event_message["N"],
+                                    flat_fees=[TokenAmount(amount=Decimal(event_message["n"]), token=event_message["N"])]
+                                )
+                                trade_update = TradeUpdate(
+                                    trade_id=str(event_message["t"]),
+                                    client_order_id=client_order_id,
+                                    exchange_order_id=exchange_order_id,
+                                    trading_pair=tracked_order.trading_pair,
+                                    fee=fee,
+                                    fill_base_amount=Decimal(event_message["l"]),
+                                    fill_quote_amount=Decimal(event_message["l"]) * Decimal(event_message["L"]),
+                                    fill_price=Decimal(event_message["L"]),
+                                    fill_timestamp=event_message["T"] * 1e-3,
+                                )
+                                self._order_tracker.process_trade_update(trade_update)
 
-                    tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
-                    if tracked_order is not None:
-                        order_update = OrderUpdate(
-                            trading_pair=tracked_order.trading_pair,
-                            update_timestamp=event_message["E"] * 1e-3,
-                            new_state=CONSTANTS.ORDER_STATE_2[event_message["X"]],
-                            client_order_id=client_order_id,
-                            exchange_order_id=str(event_message["i"]),
-                        )
-                        self._order_tracker.process_order_update(order_update=order_update)
+                    client_order_id = tokocrypto_utils.get_flight_order_key_from_value(self._order_tracker.all_updatable_orders, "exchange_order_id", exchange_order_id)
+                    if client_order_id is not None:
+                        tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
+                        if tracked_order is not None:
+                            order_update = OrderUpdate(
+                                trading_pair=tracked_order.trading_pair,
+                                update_timestamp=event_message["E"] * 1e-3,
+                                new_state=CONSTANTS.ORDER_STATE_2[event_message["X"]],
+                                client_order_id=client_order_id,
+                                exchange_order_id=exchange_order_id,
+                            )
+                            self._order_tracker.process_order_update(order_update=order_update)
 
                 elif event_type == "outboundAccountPosition":
                     balances = event_message["B"]
@@ -643,7 +647,7 @@ class TokocryptoExchange(ExchangePyBase):
             client_order_id=tracked_order.client_order_id,
             exchange_order_id=str(updated_order_data["data"]["orderId"]),
             trading_pair=tracked_order.trading_pair,
-            update_timestamp=updated_order_data["timestamp"] * 1e-3,
+            update_timestamp=updated_order_data["data"]["createTime"] * 1e-3,
             new_state=new_state,
         )
 
