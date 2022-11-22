@@ -21,7 +21,7 @@ from hummingbot.connector.utils import get_new_client_order_id
 from hummingbot.core.data_type.common import OrderType, TradeType
 from hummingbot.core.data_type.in_flight_order import InFlightOrder, OrderState
 from hummingbot.core.data_type.trade_fee import DeductedFromReturnsTradeFee, TokenAmount, TradeFeeBase
-from hummingbot.core.event.events import MarketOrderFailureEvent, OrderFilledEvent
+from hummingbot.core.event.events import BuyOrderCompletedEvent, MarketOrderFailureEvent, OrderFilledEvent
 
 
 class TokocryptoExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTests):
@@ -1157,6 +1157,194 @@ class TokocryptoExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTe
                 f"client_order_id='{order_id}', exchange_order_id=None, misc_updates=None)"
             )
         )
+
+    @aioresponses()
+    def test_user_stream_update_for_order_full_fill(self, mock_api):
+        self.exchange._set_current_timestamp(1640780000)
+        self.exchange.start_tracking_order(
+            order_id=self.client_order_id_prefix + "1",
+            exchange_order_id=str(self.expected_exchange_order_id),
+            trading_pair=self.trading_pair,
+            order_type=OrderType.LIMIT,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("1"),
+        )
+        order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+        order_event = self.order_event_for_full_fill_websocket_update(order=order)
+        trade_event = self.trade_event_for_full_fill_websocket_update(order=order)
+
+        url = web_utils.private_rest_url(CONSTANTS.MY_TRADES_PATH_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+
+        trade_fill = {
+            "symbol": self.tokocrypto_exchange_symbol_associated_to_pair(self.base_asset, self.quote_asset),
+            "tradeId": 28457,
+            "orderId": int(order.exchange_order_id),
+            "price": str(order.price),
+            "qty": str(order.amount),
+            "quoteQty": "48.000012",
+            "commission": str(self.expected_fill_fee.flat_fees[0].amount),
+            "commissionAsset": self.expected_fill_fee.flat_fees[0].token,
+            "time": 1499405658657,
+            "isBuyer": True,
+            "isMaker": False,
+            "isBestMatch": True
+        }
+
+        mock_response = {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "list": [trade_fill]
+            },
+            "timestamp": 1499865549590
+        }
+        mock_api.get(regex_url, body=json.dumps(mock_response))
+
+        mock_queue = AsyncMock()
+        event_messages = []
+        if trade_event:
+            event_messages.append(trade_event)
+        if order_event:
+            event_messages.append(order_event)
+        event_messages.append(asyncio.CancelledError)
+        mock_queue.get.side_effect = event_messages
+        self.exchange._user_stream_tracker._user_stream = mock_queue
+
+        if self.is_order_fill_http_update_executed_during_websocket_order_event_processing:
+            self.configure_full_fill_trade_response(
+                order=order,
+                mock_api=mock_api)
+
+        try:
+            self.async_run_with_timeout(self.exchange._user_stream_event_listener())
+        except asyncio.CancelledError:
+            pass
+        # Execute one more synchronization to ensure the async task that processes the update is finished
+        self.async_run_with_timeout(order.wait_until_completely_filled())
+
+        fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
+        self.assertEqual(order.client_order_id, fill_event.order_id)
+        self.assertEqual(order.trading_pair, fill_event.trading_pair)
+        self.assertEqual(order.trade_type, fill_event.trade_type)
+        self.assertEqual(order.order_type, fill_event.order_type)
+        self.assertEqual(order.price, fill_event.price)
+        self.assertEqual(order.amount, fill_event.amount)
+        expected_fee = self.expected_fill_fee
+        self.assertEqual(expected_fee, fill_event.trade_fee)
+
+        buy_event: BuyOrderCompletedEvent = self.buy_order_completed_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, buy_event.timestamp)
+        self.assertEqual(order.client_order_id, buy_event.order_id)
+        self.assertEqual(order.base_asset, buy_event.base_asset)
+        self.assertEqual(order.quote_asset, buy_event.quote_asset)
+        self.assertEqual(order.amount, buy_event.base_asset_amount)
+        self.assertEqual(order.amount * fill_event.price, buy_event.quote_asset_amount)
+        self.assertEqual(order.order_type, buy_event.order_type)
+        self.assertEqual(order.exchange_order_id, buy_event.exchange_order_id)
+        self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+        self.assertTrue(order.is_filled)
+        self.assertTrue(order.is_done)
+
+        self.assertTrue(
+            self.is_logged(
+                "INFO",
+                f"BUY order {order.client_order_id} completely filled."
+            )
+        )
+
+    @aioresponses()
+    def test_lost_order_user_stream_full_fill_events_are_processed(self, mock_api):
+        self.exchange._set_current_timestamp(1640780000)
+        self.exchange.start_tracking_order(
+            order_id=self.client_order_id_prefix + "1",
+            exchange_order_id=str(self.expected_exchange_order_id),
+            trading_pair=self.trading_pair,
+            order_type=OrderType.LIMIT,
+            trade_type=TradeType.BUY,
+            price=Decimal("10000"),
+            amount=Decimal("1"),
+        )
+        order = self.exchange.in_flight_orders[self.client_order_id_prefix + "1"]
+
+        for _ in range(self.exchange._order_tracker._lost_order_count_limit + 1):
+            self.async_run_with_timeout(
+                self.exchange._order_tracker.process_order_not_found(client_order_id=order.client_order_id))
+
+        self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+
+        order_event = self.order_event_for_full_fill_websocket_update(order=order)
+        trade_event = self.trade_event_for_full_fill_websocket_update(order=order)
+
+        url = web_utils.private_rest_url(CONSTANTS.MY_TRADES_PATH_URL)
+        regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
+
+        trade_fill = {
+            "symbol": self.tokocrypto_exchange_symbol_associated_to_pair(self.base_asset, self.quote_asset),
+            "tradeId": 28457,
+            "orderId": int(order.exchange_order_id),
+            "price": str(order.price),
+            "qty": str(order.amount),
+            "quoteQty": "48.000012",
+            "commission": str(self.expected_fill_fee.flat_fees[0].amount),
+            "commissionAsset": self.expected_fill_fee.flat_fees[0].token,
+            "time": 1499405658657,
+            "isBuyer": True,
+            "isMaker": False,
+            "isBestMatch": True
+        }
+
+        mock_response = {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "list": [trade_fill]
+            },
+            "timestamp": 1499865549590
+        }
+        mock_api.get(regex_url, body=json.dumps(mock_response))
+
+        mock_queue = AsyncMock()
+        event_messages = []
+        if trade_event:
+            event_messages.append(trade_event)
+        if order_event:
+            event_messages.append(order_event)
+        event_messages.append(asyncio.CancelledError)
+        mock_queue.get.side_effect = event_messages
+        self.exchange._user_stream_tracker._user_stream = mock_queue
+
+        if self.is_order_fill_http_update_executed_during_websocket_order_event_processing:
+            self.configure_full_fill_trade_response(
+                order=order,
+                mock_api=mock_api)
+
+        try:
+            self.async_run_with_timeout(self.exchange._user_stream_event_listener())
+        except asyncio.CancelledError:
+            pass
+        # Execute one more synchronization to ensure the async task that processes the update is finished
+        self.async_run_with_timeout(order.wait_until_completely_filled())
+
+        fill_event: OrderFilledEvent = self.order_filled_logger.event_log[0]
+        self.assertEqual(self.exchange.current_timestamp, fill_event.timestamp)
+        self.assertEqual(order.client_order_id, fill_event.order_id)
+        self.assertEqual(order.trading_pair, fill_event.trading_pair)
+        self.assertEqual(order.trade_type, fill_event.trade_type)
+        self.assertEqual(order.order_type, fill_event.order_type)
+        self.assertEqual(order.price, fill_event.price)
+        self.assertEqual(order.amount, fill_event.amount)
+        expected_fee = self.expected_fill_fee
+        self.assertEqual(expected_fee, fill_event.trade_fee)
+
+        self.assertEqual(0, len(self.buy_order_completed_logger.event_log))
+        self.assertNotIn(order.client_order_id, self.exchange.in_flight_orders)
+        self.assertNotIn(order.client_order_id, self.exchange._order_tracker.lost_orders)
+        self.assertTrue(order.is_filled)
+        self.assertTrue(order.is_failure)
 
     def test_time_synchronizer_related_request_error_detection(self):
         exception = IOError("Error executing request POST https://www.tokocrypto.com/open/v1/order. HTTP status is 400. "

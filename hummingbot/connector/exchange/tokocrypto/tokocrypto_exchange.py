@@ -455,18 +455,34 @@ class TokocryptoExchange(ExchangePyBase):
                                     percent_token=event_message["N"],
                                     flat_fees=[TokenAmount(amount=Decimal(event_message["n"]), token=event_message["N"])]
                                 )
-                                trade_update = TradeUpdate(
-                                    trade_id=str(event_message["t"]),
-                                    client_order_id=client_order_id,
-                                    exchange_order_id=exchange_order_id,
-                                    trading_pair=tracked_order.trading_pair,
-                                    fee=fee,
-                                    fill_base_amount=Decimal(event_message["l"]),
-                                    fill_quote_amount=Decimal(event_message["l"]) * Decimal(event_message["L"]),
-                                    fill_price=Decimal(event_message["L"]),
-                                    fill_timestamp=event_message["T"] * 1e-3,
-                                )
-                                self._order_tracker.process_trade_update(trade_update)
+
+                                params = {
+                                    "symbol": self.tokocrypto_exchange_symbol_associated_to_pair(trading_pair=tracked_order.trading_pair),
+                                    "orderId": exchange_order_id
+                                }
+
+                                trades = await self._api_get(
+                                    path_url=CONSTANTS.MY_TRADES_PATH_URL,
+                                    params=params,
+                                    return_err=True,
+                                    is_auth_required=True)
+
+                                if not isinstance(trades, Exception):
+                                    if "data" in trades:
+                                        for trade in trades["data"]["list"]:
+                                            trade_id = trade["tradeId"]
+                                            trade_update = TradeUpdate(
+                                                trade_id=str(trade_id),
+                                                client_order_id=client_order_id,
+                                                exchange_order_id=exchange_order_id,
+                                                trading_pair=tracked_order.trading_pair,
+                                                fee=fee,
+                                                fill_base_amount=Decimal(event_message["l"]),
+                                                fill_quote_amount=Decimal(event_message["l"]) * Decimal(event_message["L"]),
+                                                fill_price=Decimal(event_message["L"]),
+                                                fill_timestamp=event_message["T"] * 1e-3,
+                                            )
+                                            self._order_tracker.process_trade_update(trade_update)
 
                     client_order_id = tokocrypto_utils.get_flight_order_key_from_value(self._order_tracker.all_updatable_orders, "exchange_order_id", exchange_order_id)
                     if client_order_id is not None:
