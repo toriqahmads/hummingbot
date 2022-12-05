@@ -451,7 +451,7 @@ class TokocryptoExchangeTests(AbstractExchangeConnectorTests.ExchangeConnectorTe
 
     def validate_order_cancelation_request(self, order: InFlightOrder, request_call: RequestCall):
         request_data = dict(request_call.kwargs["params"])
-        self.assertEqual(order.exchange_order_id, str(request_data["orderId"]))
+        self.assertEqual(order.client_order_id, str(request_data["orderId"]))
 
     def validate_order_status_request(self, order: InFlightOrder, request_call: RequestCall):
         request_params = request_call.kwargs["params"]

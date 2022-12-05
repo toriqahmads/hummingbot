@@ -48,8 +48,8 @@ class TokocryptoAPIUserStreamDataSource(UserStreamTrackerDataSource):
         await self._listen_key_initialized_event.wait()
 
         ws: WSAssistant = await self._get_ws_assistant()
-        url = f"{CONSTANTS.WSS_URL.format(self._domain)}/{self._current_listen_key}"
-        await ws.connect(ws_url=url, ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
+        url = f"{CONSTANTS.WSS_URL}/{self._current_listen_key}"
+        await ws.connect(ws_url=url)
         return ws
 
     async def _subscribe_channels(self, websocket_assistant: WSAssistant):

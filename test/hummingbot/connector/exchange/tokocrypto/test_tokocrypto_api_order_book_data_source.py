@@ -20,7 +20,7 @@ from hummingbot.connector.exchange.tokocrypto.tokocrypto_api_order_book_data_sou
 from hummingbot.connector.exchange.tokocrypto.tokocrypto_exchange import TokocryptoExchange
 from hummingbot.connector.test_support.network_mocking_assistant import NetworkMockingAssistant
 from hummingbot.core.data_type.order_book import OrderBook
-from hummingbot.core.data_type.order_book_message import OrderBookMessage
+from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
 
 
 class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
@@ -119,25 +119,30 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
     def _snapshot_response(self):
         resp = {
-            "lastUpdateId": 1027024,
-            "bids": [
-                [
-                    "4.00000000",
-                    "431.00000000"
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "lastUpdateId": 1027024,
+                "bids": [
+                    [
+                        "4.00000000",
+                        "431.00000000"
+                    ]
+                ],
+                "asks": [
+                    [
+                        "4.00000200",
+                        "12.00000000"
+                    ]
                 ]
-            ],
-            "asks": [
-                [
-                    "4.00000200",
-                    "12.00000000"
-                ]
-            ]
+            },
+            "timestamp": 1640000000.0
         }
         return resp
 
     @aioresponses()
     def test_get_new_order_book_successful(self, mock_api):
-        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
+        url = web_utils.public_rest_url_tko(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         resp = self._snapshot_response()
@@ -148,7 +153,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             self.data_source.get_new_order_book(self.trading_pair)
         )
 
-        expected_update_id = resp["lastUpdateId"]
+        expected_update_id = resp["data"]["lastUpdateId"]
 
         self.assertEqual(expected_update_id, order_book.snapshot_uid)
         bids = list(order_book.bid_entries())
@@ -164,7 +169,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
     @aioresponses()
     def test_get_new_order_book_raises_exception(self, mock_api):
-        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
+        url = web_utils.public_rest_url_tko(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, status=400)
@@ -217,8 +222,8 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
             "Subscribed to public order book and trade channels..."
         ))
 
-    @patch("hummingbot.core.data_type.order_book_tracker_data_source.OrderBookTrackerDataSource._sleep")
     @patch("aiohttp.ClientSession.ws_connect")
+    @patch("hummingbot.core.data_type.order_book_tracker_data_source.OrderBookTrackerDataSource._sleep")
     def test_listen_for_subscriptions_raises_cancel_exception(self, mock_ws, _: AsyncMock):
         mock_ws.side_effect = asyncio.CancelledError
 
@@ -264,7 +269,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     def test_listen_for_trades_cancelled_when_listening(self):
         mock_queue = MagicMock()
         mock_queue.get.side_effect = asyncio.CancelledError()
-        self.data_source._message_queue[CONSTANTS.TRADE_EVENT_TYPE] = mock_queue
+        self.data_source._message_queue[self.data_source._trade_messages_queue_key] = mock_queue
 
         msg_queue: asyncio.Queue = asyncio.Queue()
 
@@ -282,7 +287,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
         mock_queue = AsyncMock()
         mock_queue.get.side_effect = [incomplete_resp, asyncio.CancelledError()]
-        self.data_source._message_queue[CONSTANTS.TRADE_EVENT_TYPE] = mock_queue
+        self.data_source._message_queue[self.data_source._trade_messages_queue_key] = mock_queue
 
         msg_queue: asyncio.Queue = asyncio.Queue()
 
@@ -301,7 +306,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     def test_listen_for_trades_successful(self):
         mock_queue = AsyncMock()
         mock_queue.get.side_effect = [self._trade_update_event(), asyncio.CancelledError()]
-        self.data_source._message_queue[CONSTANTS.TRADE_EVENT_TYPE] = mock_queue
+        self.data_source._message_queue[self.data_source._trade_messages_queue_key] = mock_queue
 
         msg_queue: asyncio.Queue = asyncio.Queue()
 
@@ -315,7 +320,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     def test_listen_for_order_book_diffs_cancelled(self):
         mock_queue = AsyncMock()
         mock_queue.get.side_effect = asyncio.CancelledError()
-        self.data_source._message_queue[CONSTANTS.DIFF_EVENT_TYPE] = mock_queue
+        self.data_source._message_queue[self.data_source._diff_messages_queue_key] = mock_queue
 
         msg_queue: asyncio.Queue = asyncio.Queue()
 
@@ -333,7 +338,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
         mock_queue = AsyncMock()
         mock_queue.get.side_effect = [incomplete_resp, asyncio.CancelledError()]
-        self.data_source._message_queue[CONSTANTS.DIFF_EVENT_TYPE] = mock_queue
+        self.data_source._message_queue[self.data_source._diff_messages_queue_key] = mock_queue
 
         msg_queue: asyncio.Queue = asyncio.Queue()
 
@@ -353,7 +358,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         mock_queue = AsyncMock()
         diff_event = self._order_diff_event()
         mock_queue.get.side_effect = [diff_event, asyncio.CancelledError()]
-        self.data_source._message_queue[CONSTANTS.DIFF_EVENT_TYPE] = mock_queue
+        self.data_source._message_queue[self.data_source._diff_messages_queue_key] = mock_queue
 
         msg_queue: asyncio.Queue = asyncio.Queue()
 
@@ -366,7 +371,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
 
     @aioresponses()
     def test_listen_for_order_book_snapshots_cancelled_when_fetching_snapshot(self, mock_api):
-        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
+        url = web_utils.public_rest_url_tko(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, exception=asyncio.CancelledError, repeat=True)
@@ -383,7 +388,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         msg_queue: asyncio.Queue = asyncio.Queue()
         sleep_mock.side_effect = lambda _: self._create_exception_and_unlock_test_with_event(asyncio.CancelledError())
 
-        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
+        url = web_utils.public_rest_url_tko(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, exception=Exception, repeat=True)
@@ -399,7 +404,7 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
     @aioresponses()
     def test_listen_for_order_book_snapshots_successful(self, mock_api, ):
         msg_queue: asyncio.Queue = asyncio.Queue()
-        url = web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
+        url = web_utils.public_rest_url_tko(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self.domain)
         regex_url = re.compile(f"^{url}".replace(".", r"\.").replace("?", r"\?"))
 
         mock_api.get(regex_url, body=json.dumps(self._snapshot_response()))
@@ -411,3 +416,104 @@ class TokocryptoAPIOrderBookDataSourceUnitTests(unittest.TestCase):
         msg: OrderBookMessage = self.async_run_with_timeout(msg_queue.get())
 
         self.assertEqual(1027024, msg.update_id)
+
+    def test_snapshot_message_from_exchange(self):
+        snapshot_message = self.data_source.snapshot_message_from_exchange(
+            msg={
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "lastUpdateId": 1,
+                    "bids": [
+                        ["4.00000000", "431.00000000"]
+                    ],
+                    "asks": [
+                        ["4.00000200", "12.00000000"]
+                    ]
+                },
+                "timestamp": 1640000000.0
+            },
+            timestamp=1640000000.0,
+            metadata={"trading_pair": "COINALPHA-HBOT"}
+        )
+
+        self.assertEqual("COINALPHA-HBOT", snapshot_message.trading_pair)
+        self.assertEqual(OrderBookMessageType.SNAPSHOT, snapshot_message.type)
+        self.assertEqual(1640000000.0, snapshot_message.timestamp)
+        self.assertEqual(1, snapshot_message.update_id)
+        self.assertEqual(-1, snapshot_message.trade_id)
+        self.assertEqual(1, len(snapshot_message.bids))
+        self.assertEqual(4.0, snapshot_message.bids[0].price)
+        self.assertEqual(431.0, snapshot_message.bids[0].amount)
+        self.assertEqual(1, snapshot_message.bids[0].update_id)
+        self.assertEqual(1, len(snapshot_message.asks))
+        self.assertEqual(4.000002, snapshot_message.asks[0].price)
+        self.assertEqual(12.0, snapshot_message.asks[0].amount)
+        self.assertEqual(1, snapshot_message.asks[0].update_id)
+
+    def test_diff_message_from_exchange(self):
+        diff_msg = self.data_source.diff_message_from_exchange(
+            msg={
+                "e": "depthUpdate",
+                "E": 123456789,
+                "s": "COINALPHAHBOT",
+                "U": 1,
+                "u": 2,
+                "b": [
+                    [
+                        "0.0024",
+                        "10"
+                    ]
+                ],
+                "a": [
+                    [
+                        "0.0026",
+                        "100"
+                    ]
+                ]
+            },
+            timestamp=1640000000.0,
+            metadata={"trading_pair": "COINALPHA-HBOT"}
+        )
+
+        self.assertEqual("COINALPHA-HBOT", diff_msg.trading_pair)
+        self.assertEqual(OrderBookMessageType.DIFF, diff_msg.type)
+        self.assertEqual(1640000000.0, diff_msg.timestamp)
+        self.assertEqual(2, diff_msg.update_id)
+        self.assertEqual(1, diff_msg.first_update_id)
+        self.assertEqual(-1, diff_msg.trade_id)
+        self.assertEqual(1, len(diff_msg.bids))
+        self.assertEqual(0.0024, diff_msg.bids[0].price)
+        self.assertEqual(10.0, diff_msg.bids[0].amount)
+        self.assertEqual(2, diff_msg.bids[0].update_id)
+        self.assertEqual(1, len(diff_msg.asks))
+        self.assertEqual(0.0026, diff_msg.asks[0].price)
+        self.assertEqual(100.0, diff_msg.asks[0].amount)
+        self.assertEqual(2, diff_msg.asks[0].update_id)
+
+    def test_trade_message_from_exchange(self):
+        trade_update = {
+            "e": "trade",
+            "E": 1234567890123,
+            "s": "COINALPHAHBOT",
+            "t": 12345,
+            "p": "0.001",
+            "q": "100",
+            "b": 88,
+            "a": 50,
+            "T": 123456785,
+            "m": True,
+            "M": True
+        }
+
+        trade_message = self.data_source.trade_message_from_exchange(
+            msg=trade_update,
+            metadata={"trading_pair": "COINALPHA-HBOT"}
+        )
+
+        self.assertEqual("COINALPHA-HBOT", trade_message.trading_pair)
+        self.assertEqual(OrderBookMessageType.TRADE, trade_message.type)
+        self.assertEqual(1234567890.123, trade_message.timestamp)
+        self.assertEqual(-1, trade_message.update_id)
+        self.assertEqual(-1, trade_message.first_update_id)
+        self.assertEqual(12345, trade_message.trade_id)

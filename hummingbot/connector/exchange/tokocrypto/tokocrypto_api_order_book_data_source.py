@@ -1,13 +1,12 @@
 import asyncio
-import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from hummingbot.connector.exchange.tokocrypto import (
     tokocrypto_constants as CONSTANTS,
     tokocrypto_web_utils as web_utils,
 )
-from hummingbot.connector.exchange.tokocrypto.tokocrypto_order_book import TokocryptoOrderBook
-from hummingbot.core.data_type.order_book_message import OrderBookMessage
+from hummingbot.core.data_type.common import TradeType
+from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 from hummingbot.core.web_assistant.connections.data_types import RESTMethod, WSJSONRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 
 
 class TokocryptoAPIOrderBookDataSource(OrderBookTrackerDataSource):
-    HEARTBEAT_TIME_INTERVAL = 30.0
+    # HEARTBEAT_TIME_INTERVAL = 30.0
     TRADE_STREAM_ID = 1
     DIFF_STREAM_ID = 2
     ONE_HOUR = 60 * 60
@@ -33,8 +32,8 @@ class TokocryptoAPIOrderBookDataSource(OrderBookTrackerDataSource):
                  domain: str = CONSTANTS.DEFAULT_DOMAIN):
         super().__init__(trading_pairs)
         self._connector = connector
-        self._trade_messages_queue_key = CONSTANTS.TRADE_EVENT_TYPE
-        self._diff_messages_queue_key = CONSTANTS.DIFF_EVENT_TYPE
+        # self._trade_messages_queue_key = CONSTANTS.TRADE_EVENT_TYPE
+        # self._diff_messages_queue_key = CONSTANTS.DIFF_EVENT_TYPE
         self._domain = domain
         self._api_factory = api_factory
 
@@ -52,13 +51,13 @@ class TokocryptoAPIOrderBookDataSource(OrderBookTrackerDataSource):
         :return: the response from the exchange (JSON dictionary)
         """
         params = {
-            "symbol": await self._connector.exchange_symbol_associated_to_pair(trading_pair=trading_pair),
+            "symbol": self._connector.tokocrypto_exchange_symbol_associated_to_pair(trading_pair=trading_pair),
             "limit": "1000"
         }
 
         rest_assistant = await self._api_factory.get_rest_assistant()
         data = await rest_assistant.execute_request(
-            url=web_utils.public_rest_url(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self._domain),
+            url=web_utils.public_rest_url_tko(path_url=CONSTANTS.SNAPSHOT_PATH_URL, domain=self._domain),
             params=params,
             method=RESTMethod.GET,
             throttler_limit_id=CONSTANTS.SNAPSHOT_PATH_URL,
@@ -108,14 +107,13 @@ class TokocryptoAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
     async def _connected_websocket_assistant(self) -> WSAssistant:
         ws: WSAssistant = await self._api_factory.get_ws_assistant()
-        await ws.connect(ws_url=CONSTANTS.WSS_URL.format(self._domain),
-                         ping_timeout=CONSTANTS.WS_HEARTBEAT_TIME_INTERVAL)
+        await ws.connect(ws_url=CONSTANTS.WSS_URL)
         return ws
 
     async def _order_book_snapshot(self, trading_pair: str) -> OrderBookMessage:
         snapshot: Dict[str, Any] = await self._request_order_book_snapshot(trading_pair)
-        snapshot_timestamp: float = time.time()
-        snapshot_msg: OrderBookMessage = TokocryptoOrderBook.snapshot_message_from_exchange(
+        snapshot_timestamp: float = snapshot["timestamp"]
+        snapshot_msg: OrderBookMessage = self.snapshot_message_from_exchange(
             snapshot,
             snapshot_timestamp,
             metadata={"trading_pair": trading_pair}
@@ -125,15 +123,15 @@ class TokocryptoAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def _parse_trade_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         if "result" not in raw_message:
             trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["s"])
-            trade_message = TokocryptoOrderBook.trade_message_from_exchange(
+            trade_message = self.trade_message_from_exchange(
                 raw_message, {"trading_pair": trading_pair})
             message_queue.put_nowait(trade_message)
 
     async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
         if "result" not in raw_message:
             trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(symbol=raw_message["s"])
-            order_book_message: OrderBookMessage = TokocryptoOrderBook.diff_message_from_exchange(
-                raw_message, time.time(), {"trading_pair": trading_pair})
+            order_book_message: OrderBookMessage = self.diff_message_from_exchange(
+                raw_message, float(raw_message["E"]), {"trading_pair": trading_pair})
             message_queue.put_nowait(order_book_message)
 
     def _channel_originating_message(self, event_message: Dict[str, Any]) -> str:
@@ -143,3 +141,63 @@ class TokocryptoAPIOrderBookDataSource(OrderBookTrackerDataSource):
             channel = (self._diff_messages_queue_key if event_type == CONSTANTS.DIFF_EVENT_TYPE
                        else self._trade_messages_queue_key)
         return channel
+
+    def snapshot_message_from_exchange(cls,
+                                       msg: Dict[str, any],
+                                       timestamp: float,
+                                       metadata: Optional[Dict] = None) -> OrderBookMessage:
+        """
+        Creates a snapshot message with the order book snapshot message
+        :param msg: the response from the exchange when requesting the order book snapshot
+        :param timestamp: the snapshot timestamp
+        :param metadata: a dictionary with extra information to add to the snapshot data
+        :return: a snapshot message with the snapshot information received from the exchange
+        """
+        if metadata:
+            msg.update(metadata)
+        return OrderBookMessage(OrderBookMessageType.SNAPSHOT, {
+            "trading_pair": msg["trading_pair"],
+            "update_id": msg["data"]["lastUpdateId"],
+            "bids": msg["data"]["bids"],
+            "asks": msg["data"]["asks"]
+        }, timestamp=timestamp)
+
+    def diff_message_from_exchange(cls,
+                                   msg: Dict[str, any],
+                                   timestamp: Optional[float] = None,
+                                   metadata: Optional[Dict] = None) -> OrderBookMessage:
+        """
+        Creates a diff message with the changes in the order book received from the exchange
+        :param msg: the changes in the order book
+        :param timestamp: the timestamp of the difference
+        :param metadata: a dictionary with extra information to add to the difference data
+        :return: a diff message with the changes in the order book notified by the exchange
+        """
+        if metadata:
+            msg.update(metadata)
+        return OrderBookMessage(OrderBookMessageType.DIFF, {
+            "trading_pair": msg["trading_pair"],
+            "first_update_id": msg["U"],
+            "update_id": msg["u"],
+            "bids": msg["b"],
+            "asks": msg["a"]
+        }, timestamp=timestamp)
+
+    def trade_message_from_exchange(cls, msg: Dict[str, any], metadata: Optional[Dict] = None):
+        """
+        Creates a trade message with the information from the trade event sent by the exchange
+        :param msg: the trade event details sent by the exchange
+        :param metadata: a dictionary with extra information to add to trade message
+        :return: a trade message with the details of the trade as provided by the exchange
+        """
+        if metadata:
+            msg.update(metadata)
+        ts = msg["E"]
+        return OrderBookMessage(OrderBookMessageType.TRADE, {
+            "trading_pair": msg["trading_pair"],
+            "trade_type": float(TradeType.SELL.value) if msg["m"] else float(TradeType.BUY.value),
+            "trade_id": msg["t"],
+            "update_id": ts,
+            "price": msg["p"],
+            "amount": msg["q"]
+        }, timestamp=ts * 1e-3)

@@ -21,7 +21,7 @@ TICKER_PRICE_CHANGE_PATH_URL = "/ticker/24hr"
 TICKER_BOOK_PATH_URL = "/ticker/bookTicker"
 EXCHANGE_INFO_PATH_URL = "/exchangeInfo"
 PING_PATH_URL = "/ping"
-SNAPSHOT_PATH_URL = "/depth"
+SNAPSHOT_PATH_URL = "/market/depth"
 SERVER_TIME_PATH_URL = "/common/time"
 SERVER_TIME_2_PATH_URL = "/time"
 

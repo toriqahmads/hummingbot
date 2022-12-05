@@ -33,8 +33,6 @@ from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFa
 if TYPE_CHECKING:
     from hummingbot.client.config.config_helpers import ClientConfigAdapter
 
-s_logger = None
-
 
 class TokocryptoExchange(ExchangePyBase):
     UPDATE_ORDER_STATUS_MIN_INTERVAL = 10.0
@@ -121,17 +119,6 @@ class TokocryptoExchange(ExchangePyBase):
     def is_trading_required(self) -> bool:
         return self._trading_required
 
-    @property
-    def status_dict(self) -> Dict[str, bool]:
-        return {
-            "symbols_mapping_initialized": self.trading_pair_symbol_map_ready(),
-            "order_books_initialized": self.order_book_tracker.ready,
-            "account_balance": not self.is_trading_required or len(self._account_balances) > 0,
-            "trading_rule_initialized": len(self._trading_rules) > 0 if self.is_trading_required else True,
-            "user_stream_initialized":
-                self._user_stream_tracker.data_source.last_recv_time > 0 if self.is_trading_required else True,
-        }
-
     def tokocrypto_exchange_symbol_associated_to_pair(self, trading_pair: str) -> str:
         """
         Used to translate a trading pair from the client notation to the exchange notation
@@ -145,10 +132,6 @@ class TokocryptoExchange(ExchangePyBase):
 
     def supported_order_types(self):
         return [OrderType.LIMIT, OrderType.LIMIT_MAKER]
-
-    async def get_all_pairs_prices(self) -> List[Dict[str, str]]:
-        pairs_prices = await self._api_get(path_url=CONSTANTS.TICKER_BOOK_PATH_URL)
-        return pairs_prices
 
     def _is_request_exception_related_to_time_synchronizer(self, request_exception: Exception):
         error_description = str(request_exception)
@@ -315,6 +298,9 @@ class TokocryptoExchange(ExchangePyBase):
             is_auth_required=False,
             use_private=True)
 
+        if int(order_result["code"]) != 0:
+            raise Exception(order_result['msg'])
+
         o_id = str(order_result["data"]["orderId"])
         transact_time = order_result["data"]["createTime"] * 1e-3
         return (o_id, transact_time)
@@ -325,7 +311,10 @@ class TokocryptoExchange(ExchangePyBase):
         # so will automatically return True
         # then update order and remove from hummingbot in_db order
         if not order_id.isnumeric():
-            return True
+            if tracked_order.exchange_order_id is None:
+                return True
+            else:
+                order_id = tracked_order.exchange_order_id
 
         # symbol = self.tokocrypto_exchange_symbol_associated_to_pair(trading_pair=tracked_order.trading_pair)
         api_params = {
@@ -338,24 +327,9 @@ class TokocryptoExchange(ExchangePyBase):
             headers=self.authenticator.header_for_authentication(),
             is_auth_required=False,
             use_private=True)
-        # self.logger().info(f"place order cancel {cancel_result}")
-        if "data" not in cancel_result:
-            # trading_pair = self.tokocrypto_exchange_symbol_associated_to_pair(trading_pair=tracked_order.trading_pair)
-            # updated_order_data = await self._api_get(
-            #     path_url=CONSTANTS.ORDER_PATH_URL,
-            #     params={
-            #         "symbol": trading_pair,
-            #         "orderId": tracked_order.exchange_order_id,
-            #         "clientId": tracked_order.client_order_id},
-            #     is_auth_required=True)
-            # self.logger().info(f"order after cancel fail 249 {updated_order_data}")
-            # self.logger().info(f"in_flight_orders order {self.in_flight_orders}")
-            # order_update = await self._request_order_status(tracked_order=tracked_order)
-            # if tracked_order.client_order_id in self.in_flight_orders:
-            # self.logger().info(f"update tracked order {tracked_order}")
-            # self._order_tracker.process_order_update(order_update)
-            await self._status_polling_loop_fetch_updates()
 
+        if "data" not in cancel_result:
+            # await self._status_polling_loop_fetch_updates()
             return False
         else:
             # self.logger().info(f"state 252 {int(cancel_result['data']['status'])} {CONSTANTS.ORDER_STATE[3]} {CONSTANTS.ORDER_STATE[int(cancel_result['data']['status'])]}")
@@ -445,7 +419,7 @@ class TokocryptoExchange(ExchangePyBase):
                         exchange_order_id = event_message.get("C")
 
                     if execution_type == "TRADE":
-                        client_order_id = tokocrypto_utils.get_flight_order_key_from_value(self._order_tracker.all_fillable_orders, "exchange_order_id", exchange_order_id)
+                        client_order_id = tokocrypto_utils.get_flight_order_client_id_from_exchange_order_id(self._order_tracker.all_fillable_orders, exchange_order_id)
                         if client_order_id is not None:
                             tracked_order = self._order_tracker.all_fillable_orders.get(client_order_id)
                             if tracked_order is not None:
@@ -484,7 +458,7 @@ class TokocryptoExchange(ExchangePyBase):
                                             )
                                             self._order_tracker.process_trade_update(trade_update)
 
-                    client_order_id = tokocrypto_utils.get_flight_order_key_from_value(self._order_tracker.all_updatable_orders, "exchange_order_id", exchange_order_id)
+                    client_order_id = tokocrypto_utils.get_flight_order_client_id_from_exchange_order_id(self._order_tracker.all_updatable_orders, exchange_order_id)
                     if client_order_id is not None:
                         tracked_order = self._order_tracker.all_updatable_orders.get(client_order_id)
                         if tracked_order is not None:
@@ -722,32 +696,6 @@ class TokocryptoExchange(ExchangePyBase):
 
         return float(resp_json["lastPrice"])
 
-    # async def _execute_order_cancel(self, order: InFlightOrder) -> str:
-    #     try:
-    #         cancelled = await self._place_cancel(order.exchange_order_id, order)
-    #         if cancelled:
-    #             order_update: OrderUpdate = OrderUpdate(
-    #                 client_order_id=order.client_order_id,
-    #                 trading_pair=order.trading_pair,
-    #                 update_timestamp=self.current_timestamp,
-    #                 new_state=(OrderState.CANCELED
-    #                            if self.is_cancel_request_in_exchange_synchronous
-    #                            else OrderState.PENDING_CANCEL),
-    #             )
-    #             self._order_tracker.process_order_update(order_update)
-    #             return order.client_order_id
-    #     except asyncio.CancelledError:
-    #         raise
-    #     except asyncio.TimeoutError:
-    #         # Binance does not allow cancels with the client/user order id
-    #         # so log a warning and wait for the creation of the order to complete
-    #         self.logger().warning(
-    #             f"Failed to cancel the order {order.client_order_id} ({order.exchange_order_id}) because it does not have an exchange order id yet")
-    #         await self._order_tracker.process_order_not_found(order.client_order_id)
-    #     except Exception:
-    #         self.logger().error(
-    #             f"Failed to cancel order {order.client_order_id} ({order.exchange_order_id})", exc_info=True)
-
     async def _api_request(self,
                            path_url,
                            method: RESTMethod = RESTMethod.GET,
@@ -790,36 +738,6 @@ class TokocryptoExchange(ExchangePyBase):
 
         # Failed even after the last retry
         raise last_exception
-
-    async def _execute_order_cancel(self, order: InFlightOrder) -> str:
-        try:
-            order_id = order.client_order_id
-            if order.exchange_order_id:
-                order_id = order.exchange_order_id
-
-            cancelled = await self._place_cancel(order_id, order)
-            if cancelled:
-                order_update: OrderUpdate = OrderUpdate(
-                    client_order_id=order.client_order_id,
-                    trading_pair=order.trading_pair,
-                    update_timestamp=self.current_timestamp,
-                    new_state=(OrderState.CANCELED
-                               if self.is_cancel_request_in_exchange_synchronous
-                               else OrderState.PENDING_CANCEL),
-                )
-                self._order_tracker.process_order_update(order_update)
-                return order.client_order_id
-        except asyncio.CancelledError:
-            raise
-        except asyncio.TimeoutError:
-            # Tokocyrpto does not allow cancels with the client/user order id
-            # so log a warning and wait for the creation of the order to complete
-            self.logger().warning(
-                f"Failed to cancel the order {order.client_order_id}({order.exchange_order_id}) because it does not have an exchange order id yet")
-            await self._order_tracker.process_order_not_found(order.client_order_id)
-        except Exception:
-            self.logger().error(
-                f"Failed to cancel order {order.client_order_id}({order.exchange_order_id})", exc_info=True)
 
     def quantize_order_amount(self, trading_pair: str, amount: Decimal, price: Decimal = s_decimal_0) -> Decimal:
         """

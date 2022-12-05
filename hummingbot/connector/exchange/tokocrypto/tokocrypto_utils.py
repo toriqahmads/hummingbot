@@ -16,14 +16,11 @@ DEFAULT_FEES = TradeFeeSchema(
 )
 
 
-def get_flight_order_key_from_value(dicts: Dict, key_name: str, val: any):
+def get_flight_order_client_id_from_exchange_order_id(dicts: Dict, exchange_order_id: any):
     key = None
-    for dic_key in dicts:
-        if dicts[dic_key] is not None:
-            order = dicts[dic_key].to_json()
-            if order[key_name] is not None:
-                if order[key_name] == val:
-                    key = dic_key
+    for order in dicts.values():
+        if order.exchange_order_id == exchange_order_id:
+            key = order.client_order_id
     return key
 
 
